@@ -1,0 +1,50 @@
+entities:
+  - id: sw1
+    kind: switch
+    level: 1
+
+  - id: cn19
+    kind: compute
+  - id: cn20
+    kind: compute
+  - id: cn21
+    kind: compute
+  - id: cn22
+    kind: compute
+  - id: cn23
+    kind: compute
+  - id: cn24
+    kind: compute
+  - id: cn25
+    kind: compute
+  - id: cn26
+    kind: compute
+  - id: cn27
+    kind: compute
+  - id: cn28
+    kind: compute
+
+contains:
+  - parent: sw1
+    children:
+      - id: cn19
+        weight: 1
+      - id: cn20
+        weight: 1
+      - id: cn21
+        weight: 1
+      - id: cn22
+        weight: 1
+      - id: cn23
+        weight: 1
+      - id: cn24
+        weight: 1
+      - id: cn25
+        weight: 1
+      - id: cn26
+        weight: 1
+      - id: cn27
+        weight: 1
+      - id: cn28
+        weight: 1
+

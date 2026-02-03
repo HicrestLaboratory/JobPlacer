@@ -1,0 +1,73 @@
+entities:
+  # Level 1 switches
+  - id: l1sw1
+    kind: switch
+    level: 1
+  - id: l1sw2
+    kind: switch
+    level: 1
+
+  # Level 2 switches
+  - id: l2sw1
+    kind: switch
+    level: 2
+  - id: l2sw2
+    kind: switch
+    level: 2
+
+  # Compute nodes under L1 switches
+  - id: cn1
+    kind: compute
+  - id: cn2
+    kind: compute
+  - id: cn3
+    kind: compute
+  - id: cn4
+    kind: compute
+  - id: cn5
+    kind: compute
+  - id: cn6
+    kind: compute
+  - id: cn7
+    kind: compute
+  - id: cn8
+    kind: compute
+
+contains:
+  # L1 switches -> compute nodes
+  - parent: l1sw1
+    children:
+      - id: cn1
+        weight: 1
+      - id: cn2
+        weight: 1
+      - id: cn3
+        weight: 1
+      - id: cn4
+        weight: 1
+
+  - parent: l1sw2
+    children:
+      - id: cn5
+        weight: 1
+      - id: cn6
+        weight: 1
+      - id: cn7
+        weight: 1
+      - id: cn8
+        weight: 1
+
+  # L2 switches -> connected to both L1 switches
+  - parent: l2sw1
+    children:
+      - id: l1sw1
+        weight: 1
+      - id: l1sw2
+        weight: 1
+
+  - parent: l2sw2
+    children:
+      - id: l1sw1
+        weight: 1
+      - id: l1sw2
+        weight: 1
