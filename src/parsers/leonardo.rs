@@ -91,8 +91,8 @@ fn parse_topology(output: &str) -> TopologyIR {
                 };
 
                 let weight = match (parent_level, child_level) {
-                    (2, 1) => 0, // L2 -> L1
-                    (1, 0) => 1, // L1 -> L0
+                    (2, 1) => 0.5, // L2 -> L1
+                    (1, 0) => 1., // L1 -> L0
                     _ => continue, // invalid connection
                 };
 
@@ -119,7 +119,7 @@ fn parse_topology(output: &str) -> TopologyIR {
                     });
 
                     ir.add_contains(parent_id.clone(), node_id.clone());
-                    ir.add_link(parent_id.clone(), node_id, 1);
+                    ir.add_link(parent_id.clone(), node_id, 1.);
                 }
             }
         }

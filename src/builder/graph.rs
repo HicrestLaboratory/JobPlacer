@@ -1,25 +1,26 @@
-use std::collections::HashMap;
+use petgraph::graph::{Graph as PetGraph, NodeIndex};
+use petgraph::Undirected;
 use crate::ir::{topology_ir::TopologyIR, id::Id};
+use std::collections::HashMap;
 
-#[derive(Debug)]
-pub struct Graph {
-    pub adj: HashMap<Id, Vec<(Id, u32)>>,
-}
+/// Build a PetGraph from TopologyIR, returning both the graph and node indices
+pub fn graph_from_ir(ir: &TopologyIR) -> (PetGraph<Id, f32, Undirected>, HashMap<Id, NodeIndex>) {
+    // Correct constructor for undirected graph
+    let mut graph: PetGraph<Id, f32, Undirected> = PetGraph::new_undirected();
+    let mut node_indices: HashMap<Id, NodeIndex> = HashMap::new();
 
-impl Graph {
-    pub fn from_ir(ir: &TopologyIR) -> Self {
-        // Explicit type annotation fixes the inference error
-        let mut adj: HashMap<Id, Vec<(Id, u32)>> = HashMap::new();
-
-        for link in &ir.links {
-            adj.entry(link.from.clone())
-                .or_default()
-                .push((link.to.clone(), link.weight));
-            adj.entry(link.to.clone())
-                .or_default()
-                .push((link.from.clone(), link.weight));
-        }
-
-        Graph { adj }
+    // Add all nodes
+    for entity in ir.entities.values() {
+        let idx = graph.add_node(entity.id.clone());
+        node_indices.insert(entity.id.clone(), idx);
     }
+
+    // Add all links
+    for link in &ir.links {
+        let from_idx = node_indices[&link.from];
+        let to_idx = node_indices[&link.to];
+        graph.add_edge(from_idx, to_idx, link.weight);
+    }
+
+    (graph, node_indices)
 }

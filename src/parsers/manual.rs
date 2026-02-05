@@ -26,7 +26,7 @@ struct RawEntity {
 #[derive(Debug, Deserialize)]
 struct RawChild {
     id: String,
-    weight: Option<u32>,
+    weight: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,7 +93,7 @@ pub fn from_file<P: AsRef<Path>>(path: P) -> TopologyIR {
 
         for p in parents {
             for child_obj in &c.children {
-                let weight = child_obj.weight.unwrap_or(1);
+                let weight = child_obj.weight.unwrap_or(1.);
                 for child in expand_range(&child_obj.id) {
                     ir.add_contains(Id(p.clone()), Id(child.clone()));
                     ir.add_link(Id(p.clone()), Id(child), weight);

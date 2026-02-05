@@ -18,7 +18,7 @@ pub fn save_ir_as_yaml<P: AsRef<std::path::Path>>(ir: &TopologyIR, path: P) -> s
     #[derive(Serialize)]
     struct YamlContainsChild {
         id: String,
-        weight: u32,
+        weight: f32,
     }
 
     #[derive(Serialize)]
@@ -60,7 +60,7 @@ pub fn save_ir_as_yaml<P: AsRef<std::path::Path>>(ir: &TopologyIR, path: P) -> s
             let weight = ir.links.iter()
                 .find(|link| link.from == *parent && link.to == *child_id)
                 .map(|link| link.weight)
-                .unwrap_or(1); // fallback if missing
+                .unwrap_or(1.); // fallback if missing
 
             YamlContainsChild {
                 id: child_id.0.clone(),

@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+petgraph = "0.8.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"

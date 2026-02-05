@@ -3,13 +3,7 @@ use std::collections::HashMap;
 use crate::ir::entity::Entity;
 use crate::ir::id::Id;
 
-/// Represents a connection between two entities
-#[derive(Debug, Clone)]
-pub struct Link {
-    pub from: Id,
-    pub to: Id,
-    pub weight: u32,
-}
+use crate::ir::link::Link;
 
 /// Intermediate representation of the cluster topology
 #[derive(Default, Debug)]
@@ -24,7 +18,7 @@ impl TopologyIR {
         self.entities.insert(entity.id.clone(), entity);
     }
 
-    pub fn add_link(&mut self, from: Id, to: Id, weight: u32) {
+    pub fn add_link(&mut self, from: Id, to: Id, weight: f32) {
         self.links.push(Link { from, to, weight });
     }
 

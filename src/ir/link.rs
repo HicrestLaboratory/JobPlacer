@@ -4,5 +4,5 @@ use crate::ir::id::Id;
 pub struct Link {
     pub from: Id,
     pub to: Id,
-    pub weight: u32, // hops, abstract cost
+    pub weight: f32,
 }
