@@ -1,29 +1,38 @@
-use std::env;
-use topology_extractor::parsers::manual;
+use topology_extractor::parsers::leonardo;
 use topology_extractor::builder::{graph::Graph, display, validate};
 use topology_extractor::builder::display::generate_graph_image;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <topology_file.yaml>", args[0]);
-        std::process::exit(1);
-    }
-
-    let filename = &args[1];
-
-    // Parse the YAML into the intermediate representation
-    let ir = manual::from_file(filename);
-
+    println!("Fetching Leonardo topology from scontrol...");
+    
+    // Parse the topology directly from scontrol command
+    let ir = leonardo::from_scontrol();
+    
+    println!("Topology fetched successfully!");
+    
     // Validate the IR
-    validate::validate(&ir).expect("Topology validation failed");
-
+    match validate::validate(&ir) {
+        Ok(_) => println!("Topology validation passed!"),
+        Err(e) => {
+            eprintln!("Topology validation failed: {}", e);
+            std::process::exit(1);
+        }
+    }
+    
+    // Build the graph
     let graph = Graph::from_ir(&ir);
     println!("Graph has {} vertices", graph.adj.len());
-
-    // generate PNG
-    generate_graph_image(&graph, &ir, &(filename.to_string() + ".png"));
-
-    // or generate SVG
-    generate_graph_image(&graph, &ir, &(filename.to_string() + ".svg"));
+    
+    // Generate visualization files
+    let output_base = "leonardo_topology";
+    
+    println!("Generating PNG...");
+    generate_graph_image(&graph, &ir, &format!("{}.png", output_base));
+    
+    println!("Generating SVG...");
+    generate_graph_image(&graph, &ir, &format!("{}.svg", output_base));
+    
+    println!("Done! Output files:");
+    println!("  - {}.png", output_base);
+    println!("  - {}.svg", output_base);
 }
