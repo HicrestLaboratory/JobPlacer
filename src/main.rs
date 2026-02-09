@@ -1,58 +1,51 @@
 use std::env;
 use topology_extractor::parsers::leonardo;
+use topology_extractor::parsers::manual::from_file;
 use topology_extractor::builder::graph::graph_from_ir;
 use topology_extractor::builder::display::display_graph;
 use topology_extractor::parsers::yaml::save_ir_as_yaml;
 use topology_extractor::ir::id::Id;
+use topology_extractor::query::{TopologyQuery, Constraint, ReferencePoint, DistanceGroup};
 
 fn main() {
-    let ir = topology_extractor::parsers::leonardo::from_file("../leo.txt");
+    // Parse the topology
+    let ir = topology_extractor::parsers::manual::from_file("./clusters/NANJING.yaml");
+    println!("Original topology: {} entities", ir.entities.len());
     
-    let target_compute_nodes = vec![
-        Id::from("lrdn2983"),
-        Id::from("lrdn2654"),
-        Id::from("lrdn3579"),
-        Id::from("lrdn1022"),
-        Id::from("lrdn2054"),
-        Id::from("lrdn0860"),
-        Id::from("lrdn1633"),
-        Id::from("lrdn1404"),
-        Id::from("lrdn3954"),
-        Id::from("lrdn0240"),
-        Id::from("lrdn2659"),
-        Id::from("lrdn1611"),
-        Id::from("lrdn0350"),
-        Id::from("lrdn1185"),
-        Id::from("lrdn1909"),
-        Id::from("lrdn2954"),
-        Id::from("lrdn1707"),
-        Id::from("lrdn0216"),
-        Id::from("lrdn1184"),
-        Id::from("lrdn1854"),
-        Id::from("lrdn2695"),
-        Id::from("lrdn0665"),
-        Id::from("lrdn0713"),
-        Id::from("lrdn3685"),
-        Id::from("lrdn4004"),
-        Id::from("lrdn1958"),
-        Id::from("lrdn4128"),
-        Id::from("lrdn4649"),
-        Id::from("lrdn3657"),
-        Id::from("lrdn4655"),
-        Id::from("lrdn0641"),
-        Id::from("lrdn4320"),
-        Id::from("lrdn0745"),
-    ];
+    // Create a query: 2 nodes at distance 2, 2 nodes at distance 4 from first node
+    let query = TopologyQuery::new()
+        .with_constraint(Constraint::DistanceGroup {
+            reference: ReferencePoint::First,
+            groups: vec![
+                DistanceGroup { count: 1, distance: 2.0 },  // Same L1 switch
+                DistanceGroup { count: 2, distance: 4.0 },  // Different L1 switch
+            ],
+        });
     
-    let filtered_ir = ir.filter_with_topology(&target_compute_nodes);
+    // Execute query with a specific anchor node (change "cn1" to an actual compute node ID from your topology)
+    let anchor_node = Id::from("cn1"); // Replace with actual compute node ID
+    let selected_nodes = query.execute_from(&ir, anchor_node.clone())
+        .expect("Query execution failed");
     
-    println!("Original: {} entities", ir.entities.len());
-    println!("Filtered: {} entities (compute nodes + topology)", filtered_ir.entities.len());
+    println!("\nQuery Results:");
+    println!("Selected {} compute nodes:", selected_nodes.len());
     
-    save_ir_as_yaml(&filtered_ir, "NANJING_filtered.yaml").expect("Failed to save YAML");
+    let node_ids: Vec<_> = selected_nodes.iter().map(|node_id| node_id.0.clone()).collect();
     
+    // Filter IR to include selected nodes + their topology (switches, etc.)
+    let filtered_ir = ir.filter_with_topology(&selected_nodes);
+    println!("\nFiltered topology: {} entities (compute nodes + switches)", filtered_ir.entities.len());
+
+    for node_id in &node_ids {
+        println!(" - {}", node_id);
+    }
+    
+    // Save filtered IR as YAML
+    save_ir_as_yaml(&filtered_ir, "query_result.yaml")
+        .expect("Failed to save YAML");
+    println!("Saved topology to: query_result.yaml");
+    
+    // Generate and display SVG graph
     let (graph, _indices) = graph_from_ir(&filtered_ir);
-    display_graph(&graph, &filtered_ir, "nanjing_filtered.svg");
-    
-    println!("Graph generated: nanjing_filtered.svg ({} nodes)", graph.node_count());
+    display_graph(&graph, &filtered_ir, "query_result.svg");
 }

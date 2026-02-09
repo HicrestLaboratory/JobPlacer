@@ -1,1 +1,14 @@
 /target
+
+*svg
+*png
+*jpg
+*dot
+
+# Ignore all YAML files
+*.yaml
+*.yml
+
+# But not YAML files in clusters/
+!clusters/**/*.yaml
+!clusters/**/*.yml
