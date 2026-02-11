@@ -2,7 +2,7 @@ use crate::ir::topology_ir::TopologyIR;
 use crate::ir::id::Id;
 use crate::ir::entity::{Entity, EntityKind};
 use crate::builder::graph::graph_from_ir;
-use super::{Constraint, ReferencePoint, NodePredicate, QueryError};
+use super::{Constraint, ReferencePoint, NodePredicate, QueryError, DistanceGroupWithParent};
 use std::collections::{HashMap, HashSet};
 use petgraph::algo::dijkstra;
 use petgraph::graph::NodeIndex;
@@ -137,6 +137,31 @@ impl<'a> NodeSelector<'a> {
                 }
             }
             
+            Constraint::NodesAtDistanceWithSharedParent { count, distance, reference, parent_level } => {
+                let ref_node = self.resolve_reference(reference)?;
+                let candidates = self.find_nodes_at_distance_with_shared_parent(
+                    &ref_node, 
+                    *distance, 
+                    *count, 
+                    *parent_level
+                )?;
+                self.select_n_from(candidates, *count)?;
+            }
+            
+            Constraint::DistanceGroupWithSharedParent { reference, groups } => {
+                let ref_node = self.resolve_reference(reference)?;
+                
+                for group in groups {
+                    let candidates = self.find_nodes_at_distance_with_shared_parent(
+                        &ref_node,
+                        group.distance,
+                        group.count,
+                        group.parent_level,
+                    )?;
+                    self.select_n_from(candidates, group.count)?;
+                }
+            }
+            
             Constraint::NodeFilter { predicate } => {
                 self.filter_available(predicate);
             }
@@ -216,6 +241,70 @@ impl<'a> NodeSelector<'a> {
             })
             .cloned()
             .collect()
+    }
+    
+    /// Find nodes at a specific distance that share the same parent at a given level
+    fn find_nodes_at_distance_with_shared_parent(
+        &mut self,
+        from: &Id,
+        distance: f32,
+        count: usize,
+        parent_level: usize,
+    ) -> Result<Vec<Id>, QueryError> {
+        // First, get all nodes at the target distance
+        let candidates_at_distance = self.find_nodes_at_distance(from, distance);
+        
+        if candidates_at_distance.is_empty() {
+            return Err(QueryError::InsufficientNodes {
+                required: count,
+                available: 0,
+            });
+        }
+        
+        // Group candidates by their parent at the specified level
+        let mut groups_by_parent: HashMap<Id, Vec<Id>> = HashMap::new();
+        
+        for candidate in &candidates_at_distance {
+            if let Some(parent) = self.get_ancestor(candidate, parent_level) {
+                groups_by_parent.entry(parent).or_default().push(candidate.clone());
+            }
+        }
+        
+        // Find a group with at least 'count' nodes
+        for (_, nodes) in &groups_by_parent {  // ← Changed: borrowed instead of moved
+            if nodes.len() >= count {
+                return Ok(nodes.clone());  // ← Changed: clone the vector
+            }
+        }
+        
+        // No group has enough nodes
+        let max_available = groups_by_parent.values()
+            .map(|v| v.len())
+            .max()
+            .unwrap_or(0);
+        
+        Err(QueryError::InsufficientNodes {
+            required: count,
+            available: max_available,
+        })
+    }
+    
+    /// Get the ancestor of a node at a specific level
+    /// Level 1 = direct parent, Level 2 = grandparent, etc.
+    fn get_ancestor(&self, node: &Id, level: usize) -> Option<Id> {
+        let mut current = node.clone();
+        
+        for _ in 0..level {
+            // Find parent in contains relationship
+            let parent = self.full_ir.contains
+                .iter()
+                .find(|(_, children)| children.contains(&current))
+                .map(|(parent, _)| parent.clone())?;
+            
+            current = parent;
+        }
+        
+        Some(current)
     }
     
     /// Get cached distance (assumes distances have been computed)
