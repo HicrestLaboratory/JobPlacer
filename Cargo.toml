@@ -5,6 +5,14 @@ edition = "2024"
 
 [dependencies]
 petgraph = "0.8.3"
-pyo3 = "0.28.0"
+pyo3 = { version = "0.28.0", features = ["extension-module"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_yaml = "0.9.34"
+
+[lib]
+name = "job_placer"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[features]
+python = []

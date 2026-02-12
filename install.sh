@@ -57,7 +57,7 @@ echo ""
 echo "=========================================="
 echo "Step 1: Installing Python dependencies"
 echo "=========================================="
-pip3 install --user -r "$SCRIPT_DIR/requirements.txt"
+pip3 install -r "$SCRIPT_DIR/requirements.txt"
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓ Python dependencies installed${NC}"
 else
@@ -76,7 +76,7 @@ echo ""
 cd "$SCRIPT_DIR"
 
 # Use maturin to build and install
-maturin develop --release
+maturin develop --release --features python
 if [ $? -eq 0 ]; then
     echo ""
     echo -e "${GREEN}✓ Rust extension built and installed${NC}"
@@ -143,9 +143,4 @@ echo ""
 echo "Quick test:"
 echo "  cd $SCRIPT_DIR"
 echo "  python3 -c 'import job_placer; print(\"JobPlacer version:\", job_placer.__name__)'"
-echo ""
-echo "Next steps:"
-echo "  1. Make sure you have a Leonardo topology file (leo.txt)"
-echo "  2. See examples in the README.md"
-echo "  3. Run tests: python3 python/test_leonardo.py"
 echo ""
