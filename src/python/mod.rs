@@ -55,8 +55,9 @@ impl TopologyQueryBuilder {
     }
 
     fn filter_by_ids(&mut self, ids: Vec<String>) {
-        let id_vec: Vec<Id> = ids.iter().map(|s| Id::from(s.as_str())).collect();
-        self.ir = self.ir.filter_by_ids(&id_vec);
+        //use filter with topology to keep only specified IDs and their relationships
+        let id_set: Vec<Id> = ids.into_iter().map(|s| Id::from(s.as_str())).collect();
+        self.ir = self.ir.filter_with_topology(&id_set);
     }
 
     fn get_nodelist_distances(&self, anchor: String, distances: Vec<(usize, f32)>) -> PyResult<Vec<String>> {
