@@ -12,3 +12,5 @@
 # But not YAML files in clusters/
 !clusters/**/*.yaml
 !clusters/**/*.yml
+
+*__pycache__/

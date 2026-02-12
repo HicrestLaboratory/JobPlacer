@@ -9,6 +9,7 @@ pub mod python;
 
 #[cfg(feature = "python")]
 pub use python::TopologyQueryBuilder; // re-export here
+pub use python::TopologyInterface; // re-export here
 
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
@@ -16,7 +17,11 @@ use pyo3::prelude::*;
 #[cfg(feature = "python")]
 #[pymodule]
 fn job_placer(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // add_class is now available on the Bound<'_, PyModule> type
+    // Export the Builder for creating queries
     m.add_class::<TopologyQueryBuilder>()?; 
+    
+    // Export the Interface for NetworkX visualization data
+    m.add_class::<TopologyInterface>()?; 
+    
     Ok(())
 }

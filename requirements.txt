@@ -1,6 +1,10 @@
 # Build tools for Rust Python bindings
 maturin>=1.0.0
 setuptools-rust>=1.5.0
+patchelf
 
 # Optional: Development tools
 pytest>=7.0.0
+
+networkx>=2.8.0
+matplotlib>=3.5.0

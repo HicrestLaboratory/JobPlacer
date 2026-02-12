@@ -67,46 +67,7 @@ The installation script will:
 
 After installation, test that everything works:
 ```bash
-python3 << EOF
-import job_placer
-
-# Check module loaded
-print("✓ job_placer module loaded")
-
-# Check TopologyQueryBuilder available
-qb = job_placer.TopologyQueryBuilder
-print("✓ TopologyQueryBuilder available")
-
-print("\n🎉 JobPlacer is ready to use!")
-EOF
-```
-
-## Quick Start
-
-After installation, try this simple example:
-```python
-from nodelists_generator_rust import RustNodelistGenerator
-
-# Initialize with Leonardo topology
-generator = RustNodelistGenerator("leo.txt")
-
-# Get all available compute nodes
-nodes = generator.get_compute_nodes()
-print(f"Available compute nodes: {len(nodes)}")
-
-# Generate a nodelist: 2 nodes at distance 2, 2 nodes at distance 4
-nodelist = generator.get_nodelist_custom_distances(
-    partition="boost_usr_prod",
-    total_nodes=5,  # 1 anchor + 4 others
-    distances=[
-        (2, 2.0),  # 2 nodes at distance 2
-        (2, 4.0),  # 2 nodes at distance 4
-    ],
-    shared_parent=False
-)
-
-print(f"Generated nodelist: {nodelist}")
-# Output: lrdn[4707-4709,5001-5002]
+python test.py
 ```
 
 # Core Concepts
