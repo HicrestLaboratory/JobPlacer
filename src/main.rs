@@ -1,14 +1,14 @@
 use std::env;
-use topology_extractor::parsers::leonardo;
-use topology_extractor::builder::graph::graph_from_ir;
-use topology_extractor::builder::display::display_graph;
-use topology_extractor::parsers::yaml::save_ir_as_yaml;
-use topology_extractor::ir::id::Id;
-use topology_extractor::query::{TopologyQuery, Constraint, ReferencePoint, DistanceGroup, DistanceGroupWithParent};
+use job_placer::parsers::leonardo;
+use job_placer::builder::graph::graph_from_ir;
+use job_placer::builder::display::display_graph;
+use job_placer::parsers::yaml::save_ir_as_yaml;
+use job_placer::ir::id::Id;
+use job_placer::query::{TopologyQuery, Constraint, ReferencePoint, DistanceGroup, DistanceGroupWithParent};
 
 fn main() {
     // Parse the topology
-    let ir = topology_extractor::parsers::leonardo::from_file("../leo.txt");
+    let ir = job_placer::parsers::leonardo::from_file("../leo.txt");
     println!("Original topology: {} entities", ir.entities.len());
     
     let anchor_node = Id::from("lrdn4707");
