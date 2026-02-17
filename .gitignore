@@ -13,4 +13,7 @@
 !clusters/**/*.yaml
 !clusters/**/*.yml
 
+# ignore json files
+*.json
+
 *__pycache__/

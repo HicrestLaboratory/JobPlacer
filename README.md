@@ -1,228 +1,71 @@
-# JobPlacer
+# JobPlacer - Quick Start
 
-**Intelligent job placement for HPC clusters using topology-aware node selection.**
+A Rust tool for topology-aware node selection on HPC clusters (SLURM).
 
-JobPlacer is a Rust library with Python bindings that enables precise control over node placement in HPC job scheduling. It uses graph-based topology analysis to select compute nodes based on their network distances and hierarchical relationships.
+## 1. Installation
 
----
+Compile the project in release mode to generate the optimized binary:
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Installation](#installation)
-  - [Prerequisites](#prerequisites)
-  - [Quick Install](#quick-install)
-  - [Manual Installation](#manual-installation)
-  - [Verify Installation](#verify-installation)
-  - [Installing on Leonardo](#installing-on-leonardo)
-- [Core Concepts](#core-concepts)
-- [Usage](#usage)
-- [Examples](#examples)
-
----
-
-## Installation
-
-### Prerequisites
-
-Before installing JobPlacer, ensure you have:
-
-1. **Rust** (1.70 or later)
 ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source $HOME/.cargo/env
+cargo build --release
+
 ```
 
-2. **Python** (3.8 or later)
+The binary will be created at: `./target/release/job_placer`
+
+---
+
+## 2. Usage with SLURM
+
+To run a job using intelligent node selection, follow these steps.
+
+### A. Define the Topology (`query.json`)
+
+Create a JSON file describing your node requirements (e.g., "4 nodes close together").
+
+**Example `query.json`:**
+
+```json
+{
+  "constraints": [
+    {
+      "type": "NodesAtDistance",
+      "count": 4,
+      "distance": 2.0,
+      "reference": "First"
+    }
+  ]
+}
+
+```
+
+### B. Submit the Script (`test.sbatch`)
+
+Ensure your `test.sbatch` script calls the binary with the JSON file as an argument.
+
+**Example command inside the script:**
+
 ```bash
-   python3 --version  # Should be 3.8+
+# ... sbatch headers ...
+./target/release/job_placer query.json
+
 ```
 
-3. **pip** (Python package installer)
+Submit the job:
+
 ```bash
-   python3 -m pip --version
+sbatch test.sbatch
+
 ```
 
-### Quick Install
+### C. Check the Output
 
-The easiest way to install JobPlacer:
+Once the job finishes, verify which nodes were selected in the log file:
+
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/JobPlacer.git
-cd JobPlacer
-
-# Run the installation script
-chmod +x install.sh
-./install.sh
-```
-
-The installation script will:
-1. ✅ Check for Rust and Python
-2. ✅ Install Python dependencies (maturin, setuptools-rust)
-3. ✅ Build the Rust extension with optimizations
-4. ✅ Install the Python module
-5. ✅ Verify the installation
-
-### Verify Installation
-
-After installation, test that everything works:
-```bash
-python test.py
-```
-
-# Core Concepts
-
-## Network Distance
-
-**Distance** is defined as the number of hops (edges) in the network graph between two compute nodes.
-
-Each physical link counts as **1 hop**:
-
-- Compute ↔ L1 switch  
-- L1 ↔ L2 switch  
-- L2 ↔ L3 switch  
-
-Distance is purely graph-based. It does not depend on bandwidth or latency — only on topology.
-
----
-
-# Reference Topology
-
-All examples use the following hierarchical network:
+cat topo_*.out
 
 ```
-                       l3sw1
-                     /       \
-                 l2sw1       l2sw2
-                /     \     /     \
-            l1sw1   l1sw2 l1sw3  l1sw4
-           /  \     /  \   /  \    /  \
-         cn1 cn2  cn3 cn4 cn5 cn6 cn7 cn8
-```
 
-### Hierarchy Levels
-
-- **Level 1** – Compute nodes  
-- **Level 2** – L1 switches (rack level)  
-- **Level 3** – L2 switches (aggregation level)  
-- **Level 4** – L3 switch (top-level core)  
-
-Anchor node: **cn1**
-
----
-
-## Distances from cn1
-
-- **2 hops**
-  - cn2  
-  `cn1 → l1sw1 → cn2`
-
-- **4 hops**
-  - cn3  
-  `cn1 → l1sw1 → l2sw1 → l1sw2 → cn3`
-  - cn4  
-  same length = 4 hops
-
-- **6 hops**
-  - cn5  
-  `cn1 → l1sw1 → l2sw1 → l3sw1 → l2sw2 → l1sw3 → cn5`
-  - cn6  
-  same length = 6 hops
-  - cn7  
-  same length = 6 hops
-  - cn8  
-  same length = 6 hops
-
----
-
-## Distance Rule
-
-The distance between two nodes depends on their **lowest common ancestor** in the hierarchy:
-
-- Same L1 → 2 hops  
-- Same L2 (different L1) → 4 hops  
-- Same L3 only → 6 hops  
-
-Distance from the anchor does **not** guarantee proximity among selected nodes.
-
----
-
-# Shared Parent Constraints
-
-A **shared parent constraint** requires selected nodes to share the same ancestor at a specified hierarchy level.
-
-- Distance controls **anchor locality**  
-- Shared parent controls **group locality**
-
-Both are independent.
-
----
-
-# Example: Select 2 Nodes at Distance 6 from cn1
-
-Candidates:
-
-- cn5
-- cn6
-- cn7
-- cn8
-
----
-
-## Case 1 — Without Shared Parent Constraint
-
-Possible selection:
-
-- cn5
-- cn7
-
-```
-                       l3sw1
-                     /      \
-                 l2sw1      l2sw2
-                   |         /  \
-                 l1sw1   l1sw3  l1sw4
-                   |        |      |
-                  cn1      cn5*   cn7*
-```
-
-(\* = selected)
-
-Properties:
-
-- Both are 6 hops from cn1  
-- They are 4 hops from each other  
-- They do not share the same L1  
-- No locality guarantee  
-
-Distance requirement is satisfied.  
-Group locality is uncontrolled.
-
----
-
-## Case 2 — Shared Parent at Level 1 (L1)
-
-Query:
-
-> Select 2 nodes at distance 6 that share the same L1
-
-Possible selection:
-
-- cn5-cn6
-
-```
-                       l3sw1
-                     /       \
-                 l2sw1       l2sw2
-                   |           |    
-                l1sw1        l1sw3  
-                  |           /  \   
-                 cn1        cn5* cn6* 
-```
-
-Properties:
-
-- Both are 6 hops from cn1  
-- They are 2 hops from each other  
-- They share the same L1 (l1sw3)
-
+*You should see output like:* `✅ SUCCESS! Optimal Nodes Selected: lrdn0001,lrdn0002...`
+or if it fails you should see output like: ❌ ERROR: Topology search failed. No matching nodes found.
