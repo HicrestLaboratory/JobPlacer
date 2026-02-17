@@ -16,15 +16,16 @@ cat <<EOF > my_query.json
 {
   "constraints": [
     {
-      "type": "NodesAtDistanceWithSharedParent",
+      "type": "NodesAtDistance",
       "count": 3,
       "distance": 4.0,
-      "reference": "First",
-      "parent_level": 1
+      "reference": "First"
     }
   ]
 }
 EOF
+
+echo $SLURM_JOB_NODELIST
 
 # 1. Run the Rust tool and capture ALL output into a variable
 #    (Assumes binary is at ./target/release/job_placer)

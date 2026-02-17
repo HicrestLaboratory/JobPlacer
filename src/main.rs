@@ -17,12 +17,12 @@ struct QueryInput {
 enum ConstraintInput {
     NodesAtDistance {
         count: usize,
-        distance: f64,
-        reference: String, // "First" or "Last"
+        distance: f32,
+        reference: String, // "First"
     },
     NodesAtDistanceWithSharedParent {
         count: usize,
-        distance: f64,
+        distance: f32,
         reference: String,
         parent_level: usize,
     },
@@ -35,7 +35,7 @@ enum ConstraintInput {
 #[derive(Deserialize, Debug)]
 struct DistanceGroupInput {
     count: usize,
-    distance: f64,
+    distance: f32,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -128,7 +128,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn parse_ref(s: &str) -> ReferencePoint {
     match s.to_lowercase().as_str() {
-        "last" => ReferencePoint::Last,
         _ => ReferencePoint::First,
     }
 }
