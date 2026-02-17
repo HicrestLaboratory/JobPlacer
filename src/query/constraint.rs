@@ -1,4 +1,3 @@
-use crate::ir::id::Id;
 use super::reference::{ReferencePoint, NodePredicate};
 
 /// A constraint for selecting compute nodes

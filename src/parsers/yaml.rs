@@ -1,4 +1,4 @@
-use crate::ir::entity::{Entity, EntityKind};
+use crate::ir::entity::EntityKind;
 use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
 use serde::Serialize;

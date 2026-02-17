@@ -3,7 +3,7 @@ use crate::ir::entity::Entity;
 use crate::ir::id::Id;
 use crate::ir::link::Link;
 
-/// Intermediate representation of the cluster topology
+/// Intermediate representation of the systems topology
 #[derive(Default, Debug, Clone)]
 pub struct TopologyIR {
     pub entities: HashMap<Id, Entity>,
@@ -94,7 +94,7 @@ impl TopologyIR {
     ///     e.node_type == "compute" && e.zone == "us-west" && e.capacity > 50
     /// });
     /// ```
-    pub fn filter_chain(&self) -> FilterChain {
+    pub fn filter_chain(&'_ self) -> FilterChain<'_> {
         FilterChain::new(self)
     }
 

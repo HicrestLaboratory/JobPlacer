@@ -1,4 +1,5 @@
 /target
+Cargo.lock
 
 *svg
 *png
@@ -9,9 +10,9 @@
 *.yaml
 *.yml
 
-# But not YAML files in clusters/
-!clusters/**/*.yaml
-!clusters/**/*.yml
+# But not YAML files in systems/
+!systems/**/*.yaml
+!systems/**/*.yml
 
 # ignore json files
 *.json

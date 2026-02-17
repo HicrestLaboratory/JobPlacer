@@ -2,7 +2,7 @@ use crate::ir::topology_ir::TopologyIR;
 use crate::ir::id::Id;
 use crate::ir::entity::{Entity, EntityKind};
 use crate::builder::graph::graph_from_ir;
-use super::{Constraint, ReferencePoint, NodePredicate, QueryError, DistanceGroupWithParent};
+use super::{Constraint, ReferencePoint, NodePredicate, QueryError};
 use std::collections::{HashMap, HashSet};
 use petgraph::algo::dijkstra;
 use petgraph::graph::NodeIndex;

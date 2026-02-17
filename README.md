@@ -1,8 +1,6 @@
----
-
 # JobPlacer - Quick Start
 
-A Rust tool for topology-aware node selection on HPC clusters (SLURM).
+A Rust tool for topology-aware node selection on HPC systems (SLURM).
 
 ## 1. Installation
 
@@ -10,7 +8,6 @@ Compile the project to generate the optimized binary:
 
 ```bash
 cargo build --release
-
 ```
 
 The binary is located at `./target/release/job_placer`.
