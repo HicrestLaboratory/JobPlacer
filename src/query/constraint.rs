@@ -30,7 +30,7 @@ pub enum Constraint {
     /// // Select 2 nodes at distance 4 that are under the same L1 switch
     /// Constraint::NodesAtDistanceWithSharedParent {
     ///     count: 2,
-    ///     distance: 4.0,
+    ///     distance: 4,
     ///     reference: ReferencePoint::First,
     ///     parent_level: 1, // 1 = direct parent (L1 switch)
     /// }
@@ -50,8 +50,8 @@ pub enum Constraint {
     /// Constraint::DistanceGroupWithSharedParent {
     ///     reference: ReferencePoint::First,
     ///     groups: vec![
-    ///         DistanceGroupWithParent { count: 2, distance: 4.0, parent_level: 1 },
-    ///         DistanceGroupWithParent { count: 2, distance: 2.0, parent_level: 1 },
+    ///         DistanceGroupWithParent { count: 2, distance: 4, parent_level: 1 },
+    ///         DistanceGroupWithParent { count: 2, distance: 2, parent_level: 1 },
     ///     ],
     /// }
     /// ```

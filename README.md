@@ -1,8 +1,8 @@
-# JobPlacer - Quick Start
+# JobPlacer
 
 A Rust tool for topology-aware node selection on HPC systems (SLURM).
 
-## 1. Installation
+## Installation
 
 Compile the project to generate the optimized binary:
 
@@ -14,54 +14,25 @@ The binary is located at `./target/release/job_placer`.
 
 ---
 
-## 2. Configuration (`query.json`)
-
-Define your topology requirements in a JSON file. This allows you to request nodes based on network hops (distance) and grouping.
-
-```json
-{
-  "constraints": [
-    {
-      "type": "NodesAtDistance",
-      "count": 4,
-      "distance": 2.0,
-      "reference": "First"
-    }
-  ]
-}
-
-```
-
----
-
-## 🔍 How the Search Works
+## 🔍 How do Queries Work
 
 JobPlacer doesn't just look at a list of nodes; it evaluates them based on a **Starting Node** (the anchor) and how they connect through the network tree.
 
 ### 1. The Starting Node
-Every search begins with a single node chosen from your allocation. This is the **Anchor**. All other nodes are then checked against this anchor to see if they meet your requirements.
+
+The anchor node is automatically selected. If you are under a SLURM allocation or if you specify an explicit nodelist, anchors will be sampled from that pool of nodes. All other nodes are then checked against this anchor to see if they meet your requirements.
 
 ### 2. Distance (Number of Hops)
 Distance is simply the number of "steps" or "hops" between the Anchor and another node.
 
-
-
-* **Distance 2:** Two nodes under the same Level 1 (L1) switch. To communicate, data goes up to the switch and back down (2 hops).
-* **Distance 4+:** Nodes that are further apart, requiring travel through higher-level switches.
-
----
+Define your topology requirements in a JSON file.  
+Constraints allow selecting nodes based on **network distance (hops)**.
 
 ### 3. Shared Parent (Common Group)
 This is a rule that forces the search to stay within a specific "branch" or "box" in the network tree.
 
-
-
 * **The Constraint:** When you request nodes at a certain distance, you can also require that they all share the same **Parent**.
 * **Flexible Levels:** This parent can be a small local switch or a large group switch.
-
----
-
-### Comparison
 
 | Feature | Definition | Simple Meaning |
 | :--- | :--- | :--- |
@@ -69,12 +40,57 @@ This is a rule that forces the search to stay within a specific "branch" or "box
 | **Distance** | Number of Hops | How many steps away from the anchor is this node? |
 | **Shared Parent** | Common Group | Do these nodes share the same "ancestor" switch? |
 
+### JSON Query Structure
 
-## 3. SLURM Integration
+The following example query, starting from an **anchor** node, is searching for 2 nodes on the same L1 switch (distance 2: Anchor -> L1 switch -> TargetNode). The second constraint looks for an additional node ad distance 4 (Anchor -> L1 switch #1 -> L2 switch -> L1 switch #2 -> TargetNode).
 
-JobPlacer is designed to run **inside** an allocation. It reads the nodes Slurm gave you, finds the most efficient subset, and exports them.
+```json
+{
+  "constraints": [
+    {
+      "type": "NodesAtDistance",
+      "count": 2,
+      "distance": 2,
+      "reference": "First"
+    },
+    {
+      "type": "NodesAtDistance",
+      "count": 1,
+      "distance": 4,
+      "reference": "First"
+    }
+  ]
+}
+```
 
-### Workflow Example (`submit.sbatch`)
+**Required Constraint Fields**
+- `type`: Constraint type (see below).
+- `count`: Number of nodes to select.
+- `distance`: Required network distance (in hops).
+- `reference`: Reference node for distance calculation (e.g., "First").
+
+**Constraint Types**
+- `NodesAtDistance`: Selects nodes at the specified distance from the anchor node.
+- `NodesAtDistanceWithSharedParent`: Selects nodes at the specified distance that also share the same parent at a given topology level. Additional required field: `parent_level`.
+
+<!-- TODO make example {
+  "constraints": [
+    {
+      "type": "NodesAtDistanceWithSharedParent",
+      "count": 3,
+      "distance": 5,
+      "parent_level": 2
+    }
+  ]
+} -->
+
+---
+
+## SLURM Integration
+
+JobPlacer is designed to run **inside** an allocation. It reads the nodes SLURM gave you, finds the most efficient subset, and exports them.
+
+### Usage Example (`submit.sbatch`)
 
 ```bash
 #!/bin/bash
@@ -99,7 +115,7 @@ TOPO_OUTPUT=$(./target/release/job_placer -s leonardo --topology-scontrol <(cat 
         {
             "type": "NodesAtDistance",
             "count": 1,
-            "distance": 2.0,
+            "distance": 2,
             "reference": "First"
         }
     ]

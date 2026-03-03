@@ -25,6 +25,10 @@ struct Cli {
     #[arg(short = 'n', long, value_name = "HOSTNAMES")]
     nodelist: Option<String>,
 
+    /// Consider all available nodes
+    #[arg(short = 'a', long)]
+    all_nodes: bool,
+
     /// Enable informational/debug output. By default only the result is printed.
     #[arg(short = 'v', long)]
     verbose: bool,
@@ -79,12 +83,12 @@ struct QueryInput {
 enum ConstraintInput {
     NodesAtDistance {
         count: usize,
-        distance: f32,
+        distance: i32,
         reference: String,
     },
     NodesAtDistanceWithSharedParent {
         count: usize,
-        distance: f32,
+        distance: i32,
         reference: String,
         parent_level: usize,
     },
@@ -97,7 +101,7 @@ enum ConstraintInput {
 #[derive(Deserialize, Debug)]
 struct DistanceGroupInput {
     count: usize,
-    distance: f32,
+    distance: i32,
 }
 
 // ---------------------------------------------------------------------------
@@ -124,31 +128,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let query_input: QueryInput = serde_json::from_str(&json_content)?;
+    // -----------------------------------------------------------------------
+    // Load topology
+    // -----------------------------------------------------------------------
+    let mut ir = load_topology(&cli)?;
+    let mut candidate_anchors: Vec<Id> = ir.entities.keys().map(|id| id.clone()).collect();
 
-    // -----------------------------------------------------------------------
-    // 2. Resolve node allocation
-    // -----------------------------------------------------------------------
-    let allocated_hostnames = resolve_nodes(&cli)?;
-    info(
-        &cli,
-        &format!("✓ Allocation: {} nodes", allocated_hostnames.len()),
-    );
-    let allocated_ids: Vec<Id> = allocated_hostnames
-        .iter()
-        .map(|n| Id::from(n.as_str()))
-        .collect();
+    if !cli.all_nodes { 
+        // -----------------------------------------------------------------------
+        // Resolve node allocation
+        // -----------------------------------------------------------------------
+        let allocated_hostnames = resolve_nodes(&cli)?;
+        info(
+            &cli,
+            &format!("✓ Allocation: {} nodes", allocated_hostnames.len()),
+        );
+        candidate_anchors = allocated_hostnames
+            .iter()
+            .map(|n| Id::from(n.as_str()))
+            .collect();
 
-    // -----------------------------------------------------------------------
-    // 3. Load topology
-    // -----------------------------------------------------------------------
-    let full_ir = load_topology(&cli)?;
-    let my_allocation_ir = full_ir.filter_with_topology(&allocated_ids);
+        ir = ir.filter_with_topology(&candidate_anchors);
+    }
 
     // -----------------------------------------------------------------------
     // 4. Build query from JSON
     // -----------------------------------------------------------------------
     let mut query = TopologyQuery::new();
+    let query_input: QueryInput = serde_json::from_str(&json_content)?;
 
     for c in query_input.constraints {
         let constraint = match c {
@@ -158,7 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 reference,
             } => Constraint::NodesAtDistance {
                 count,
-                distance,
+                distance: distance as f32,
                 reference: parse_ref(&reference),
             },
             ConstraintInput::NodesAtDistanceWithSharedParent {
@@ -168,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 parent_level,
             } => Constraint::NodesAtDistanceWithSharedParent {
                 count,
-                distance,
+                distance: distance as f32,
                 reference: parse_ref(&reference),
                 parent_level,
             },
@@ -177,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .iter()
                     .map(|g| DistanceGroup {
                         count: g.count,
-                        distance: g.distance,
+                        distance: g.distance as f32,
                     })
                     .collect();
 
@@ -191,10 +198,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // -----------------------------------------------------------------------
-    // 5. Execute search
-    // -----------------------------------------------------------------------
-    for anchor in &allocated_ids {
-        if let Ok(selected_nodes) = query.execute_from(&my_allocation_ir, anchor.clone()) {
+    // Execute query
+    // ----------------------------------------------------------------------- 
+    for anchor in &candidate_anchors {
+        if let Ok(selected_nodes) = query.execute_from(&ir, anchor.clone()) {
             let result_str = selected_nodes
                 .iter()
                 .map(|id| id.0.clone())
