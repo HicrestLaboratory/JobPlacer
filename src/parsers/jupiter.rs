@@ -5,12 +5,12 @@ use crate::ir::topology_ir::TopologyIR;
 use crate::parsers::run_scontrol_show_topology;
 use crate::parsers::slurm::{NodeListParseError, expand_nodelist};
 
-/// Parse Leonardo topology by executing `scontrol show topology`
+/// Parse Jupiter topology by executing `scontrol show topology`
 pub fn from_scontrol() -> Result<TopologyIR, NodeListParseError> {
     parse_topology(run_scontrol_show_topology())
 }
 
-/// Parse Leonardo topology from a file (for testing)
+/// Parse Jupiter topology from a file (for testing)
 pub fn from_file<P: AsRef<Path>>(path: P) -> Result<TopologyIR, NodeListParseError> {
     parse_topology(fs::read_to_string(path).expect("Failed to read topology file"))
 }
@@ -96,7 +96,7 @@ fn parse_topology(output: String) -> Result<TopologyIR, NodeListParseError> {
             if let Some(nodes_str) = parts.get("Nodes") {
                 let nodes = expand_nodelist(nodes_str)?
                     .into_iter()
-                    .filter(|n| n.starts_with("lrdn")) // only compute nodes
+                    .filter(|n| n.starts_with("jpbo")) // only compute nodes
                     .collect::<Vec<_>>();
 
                 for node in nodes {

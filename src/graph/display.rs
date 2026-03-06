@@ -3,7 +3,7 @@ use petgraph::visit::EdgeRef;
 use crate::ir::topology_ir::TopologyIR;
 use crate::ir::id::Id;
 use std::collections::HashSet;
-use std::io::Write; // <-- this is required
+use std::io::Write;
 
 pub fn display_graph<Ty>(graph: &PetGraph<Id, f32, Ty>, ir: &TopologyIR, output_file: &str)
 where
@@ -68,7 +68,7 @@ where
         .arg("-o")
         .arg(output_file)
         .status()
-        .expect("Failed to run Graphviz");
+        .expect("Failed to run Graphviz (please install it on your system)");
 
     if status.success() {
         println!("Graph image generated at {}", output_file);

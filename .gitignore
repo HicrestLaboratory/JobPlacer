@@ -5,6 +5,7 @@ Cargo.lock
 *png
 *jpg
 *dot
+*txt
 
 # Ignore all YAML files
 *.yaml
