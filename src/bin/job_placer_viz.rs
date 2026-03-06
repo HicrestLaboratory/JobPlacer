@@ -1,5 +1,5 @@
 use clap::{Parser};
-use job_placer::{Cli, graph::{display::display_graph, graph::graph_from_ir}, init_logger, ir::id::Id, load_topology, resolve_nodes_filter};
+use job_placer::{Cli, graph::{display::display_graph, graph_from_ir}, init_logger, ir::id::Id, load_topology, resolve_nodes_filter};
 use log::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let graph = graph_from_ir(&ir);
-    display_graph(&graph.0, &ir, "topo.svg");
+    display_graph(&graph.0, &ir, "topo.svg", None);
 
     Ok(())
 }
