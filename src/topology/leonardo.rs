@@ -28,14 +28,14 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use crate::ir::entity::{Entity, EntityKind};
 use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
-use crate::parsers::sinfo::{self, NodeInfo};
+use crate::parsers::run_scontrol_show_topology;
+use crate::parsers::sinfo::NodeInfo;
 use crate::parsers::slurm::{expand_nodelist, parse_line, NodeListParseError};
-use crate::topology::{NodeFilterOptions, TopologyParser};
+use crate::topology::{resolve_sinfo, NodeFilterOptions, SinfoSource, TopologyParser};
 
 // ---------------------------------------------------------------------------
 // Tuneable constants
@@ -121,23 +121,6 @@ pub fn from_file_with_opts<P: AsRef<Path>>(
         options: leonardo_opts,
     }
     .build(&topology_raw, node_infos, &opts)
-}
-
-// ---------------------------------------------------------------------------
-// sinfo source descriptor
-// ---------------------------------------------------------------------------
-
-pub enum SinfoSource {
-    Command,
-    File(std::path::PathBuf),
-}
-
-fn resolve_sinfo(source: Option<SinfoSource>) -> Result<Option<Vec<NodeInfo>>, NodeListParseError> {
-    match source {
-        None => Ok(None),
-        Some(SinfoSource::Command) => Ok(Some(sinfo::from_sinfo_command()?)),
-        Some(SinfoSource::File(path)) => Ok(Some(sinfo::from_sinfo_file(path)?)),
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -440,18 +423,4 @@ fn l2_partner_of(l1_name: &str, ir: &TopologyIR) -> Option<Id> {
 /// `isw-L2-CELLG21` → `"CELLG21"`
 fn cell_id_from_group_name(name: &str) -> String {
     name.rsplit('-').next().unwrap_or(name).to_string()
-}
-
-fn run_scontrol_show_topology() -> String {
-    let output = Command::new("scontrol")
-        .args(["-d", "show", "topology"])
-        .output()
-        .expect("failed to execute `scontrol show topology`");
-    if !output.status.success() {
-        panic!(
-            "scontrol failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    String::from_utf8(output.stdout).expect("invalid UTF-8 in scontrol output")
 }

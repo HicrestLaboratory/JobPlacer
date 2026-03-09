@@ -166,3 +166,16 @@ When you check your Slurm output (`cat topo_*.out`), you will see:
 | `❌ ERROR: ...` | No subset of your allocation satisfies the distance/parent constraints. |
 
 **Tip:** If it fails to find nodes, try increasing the number of nodes requested in your `#SBATCH -N` header to give the tool a larger search space.
+
+
+## Concurrent Jobs placement
+
+TODO describe `job_placer_placement_classes` bin.
+
+<!-- 
+# LEONARDO
+cargo build && ./target/debug/job_placer_placement_classes -v -s leonardo -F leonardo_topo.txt -a --sinfo-file leonardo_sinfo.txt -p boost_usr_prod
+
+# JUPITER
+cargo build && ./target/debug/job_placer_placement_classes -v -s jupiter -F jupiter_topo.txt -a --sinfo-file jupiter_sinfo.txt -p booster
+ -->

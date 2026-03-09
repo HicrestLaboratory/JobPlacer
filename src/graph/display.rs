@@ -34,8 +34,10 @@ pub type Allocations = HashMap<String, HashSet<String>>;
 pub struct DisplayOptions {
     /// Render L2 switches inside each rack cluster. Default: false.
     pub show_l2_switches: bool,
-    /// Render edges (L1↔compute, and optionally L1↔L2). Default: true.
+    /// Render edges (L1↔compute, and optionally L1↔L2). Default: false.
     pub show_edges: bool,
+    /// Render groups inter_cell_links_count. Default: false.
+    pub show_inter_cell_links_count: bool,
 }
 
 impl Default for DisplayOptions {
@@ -43,6 +45,7 @@ impl Default for DisplayOptions {
         Self {
             show_l2_switches: false,
             show_edges: false,
+            show_inter_cell_links_count: false,
         }
     }
 }
@@ -174,8 +177,8 @@ fn emit_l1_switch(out: &mut impl Write, id: &Id, alloc: &HashMap<String, (String
     };
     writeln!(
         out,
-        "    \"{id}\" [shape=diamond style=\"{style}\" fillcolor=\"{fill}\"{tooltip} \
-         label=\"{id}\" fontsize=7 width=0.55 height=0.38 fixedsize=true];",
+        "    \"{id}\" [shape=ellipse style=\"{style}\" fillcolor=\"{fill}\"{tooltip} \
+         label=\"{id}\" fontsize=7 width=0.72 height=0.25 fixedsize=true];",
         id = id.0,
     )
     .unwrap();
@@ -265,7 +268,7 @@ pub fn display_graph(
 
     for (ci, (cell_name, racks)) in cell_rack_l1.iter().enumerate() {
         let ice = inter_cell_link_count(cell_name, ir);
-        let ice_str = if ice > 0 {
+        let ice_str = if ice > 0 && opts.show_inter_cell_links_count {
             format!(" (↔ {ice} inter-cell links)")
         } else {
             String::new()

@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Id(pub String);
 
 impl From<&str> for Id {

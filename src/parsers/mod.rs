@@ -1,12 +1,11 @@
 use std::process::Command;
 
 pub mod manual;
-pub mod jupiter;
 
 pub mod slurm;
 pub mod sinfo;
 
-fn run_scontrol_show_topology() -> String {
+pub fn run_scontrol_show_topology() -> String {
     let output = Command::new("scontrol")
         .arg("-d")
         .arg("show")

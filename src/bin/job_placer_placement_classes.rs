@@ -1,9 +1,9 @@
 use clap::Parser;
 use job_placer::{
-    Cli, graph::display::{Allocations, DisplayOptions, display_graph}, init_logger, ir::{entity::EntityKind, id::Id, topology_ir::TopologyIR}, load_topology
+    Cli, graph::display::{Allocations, DisplayOptions, display_graph}, init_logger, ir::{entity::EntityKind, id::Id, topology_ir::TopologyIR}, load_topology, resolve_nodes_filter
 };
 use log::info;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use job_placer::placement::{JobRequest, PlacementResult, Placer};
 
@@ -79,28 +79,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     // Load topology
     // -----------------------------------------------------------------------
-    let ir = load_topology(&cli)?;
+    let mut ir = load_topology(&cli)?;
 
-    // if !cli.all_nodes {
-    //     let allocated_hostnames = resolve_nodes_filter(&cli)?;
-    //     info!("✓ Allocation: {} nodes", allocated_hostnames.len());
-    //     let filter: Vec<Id> = allocated_hostnames
-    //         .iter()
-    //         .map(|n| Id::from(n.as_str()))
-    //         .collect();
-    //     ir = ir.filter_with_topology(&filter);
-    // }
+    if !cli.all_nodes {
+        let allocated_hostnames = resolve_nodes_filter(&cli)?;
+        info!("✓ Allocation: {} nodes", allocated_hostnames.len());
+        let filter: Vec<Id> = allocated_hostnames
+            .iter()
+            .map(|n| Id::from(n.as_str()))
+            .collect();
+        ir = ir.filter_with_topology(&filter);
+    }
 
     // -----------------------------------------------------------------------
     // Parse placement query
     // -----------------------------------------------------------------------
-    let jobs: HashMap<String, JobRequest> = serde_json::from_str(PLACEMENT_QUERY)?;
+    let jobs: BTreeMap<String, JobRequest> = serde_json::from_str(PLACEMENT_QUERY)?;
     info!("✓ Placement query: {} jobs", jobs.len());
 
     // -----------------------------------------------------------------------
     // Run placer
     // -----------------------------------------------------------------------
     let seed = cli.seed.unwrap_or(42);
+    info!("Using seed: {seed}");
     let mut placer = Placer::new(&ir, seed);
     let result = placer.place(&jobs);
 

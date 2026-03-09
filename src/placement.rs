@@ -1,6 +1,6 @@
 // placement.rs
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -41,7 +41,7 @@ pub struct JobPlacement {
 pub enum PlacementResult {
     #[serde(rename = "ok")]
     Ok {
-        placements: HashMap<String, JobPlacement>,
+        placements: BTreeMap<String, JobPlacement>,
     },
     #[serde(rename = "infeasible")]
     Infeasible {
@@ -56,12 +56,12 @@ pub enum PlacementResult {
 /// Flat view of the topology needed by the placer.
 struct TopoView {
     /// cell_id → rack_id → l1_switch_id → [compute_node_id]
-    cells: HashMap<String, HashMap<String, HashMap<Id, Vec<Id>>>>,
+    cells: BTreeMap<String, BTreeMap<String, BTreeMap<Id, Vec<Id>>>>,
 }
 
 impl TopoView {
     fn build(ir: &TopologyIR) -> Self {
-        let mut cells: HashMap<String, HashMap<String, HashMap<Id, Vec<Id>>>> = HashMap::new();
+        let mut cells: BTreeMap<String, BTreeMap<String, BTreeMap<Id, Vec<Id>>>> = BTreeMap::new();
 
         // Collect all L1 switches grouped by cell + rack
         for entity in ir.entities.values() {
@@ -145,7 +145,7 @@ impl<'a> Placer<'a> {
     /// Attempt to place all jobs simultaneously with non-overlapping nodes.
     pub fn place(
         &mut self,
-        jobs: &HashMap<String, JobRequest>,
+        jobs: &BTreeMap<String, JobRequest>,
     ) -> PlacementResult {
         // Sort jobs by descending node count so larger jobs are placed first
         // (greedy: harder constraints first reduces backtracking).
@@ -153,7 +153,7 @@ impl<'a> Placer<'a> {
         job_order.sort_by(|a, b| b.1.nodes.cmp(&a.1.nodes));
 
         let mut used: HashSet<Id> = HashSet::new();
-        let mut placements: HashMap<String, JobPlacement> = HashMap::new();
+        let mut placements: BTreeMap<String, JobPlacement> = BTreeMap::new();
 
         for (job_name, req) in &job_order {
             match self.place_one(req, &used) {

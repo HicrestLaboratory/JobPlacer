@@ -1,0 +1,6 @@
+{
+  "job_1": { "strategy": "DP", "nodes": 3,  "placement_class": "inter-group"  },
+  "job_2": { "strategy": "DP", "nodes": 4,  "placement_class": "intra-l1"     },
+  "job_3": { "strategy": "DP", "nodes": 2,  "placement_class": "intra-group"  },
+  "job_4": { "strategy": "DP", "nodes": 6,  "placement_class": "intra-group"  }
+}

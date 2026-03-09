@@ -1,3 +1,10 @@
+pub mod graph;
+pub mod ir;
+pub mod parsers;
+pub mod placement;
+pub mod query;
+pub mod topology;
+
 use clap::clap_derive::Parser;
 use clap::Args;
 use log::{info, LevelFilter};
@@ -5,22 +12,11 @@ use std::path::PathBuf;
 
 use crate::{
     ir::topology_ir::TopologyIR,
-    parsers::{
-        jupiter,
-        slurm::{expand_nodelist, get_nodelist_from_env},
-    },
+    parsers::slurm::{expand_nodelist, get_nodelist_from_env},
     topology::{
-        leonardo::{self as leo, LeonardoOptions, SinfoSource},
-        NodeFilterOptions,
+        NodeFilterOptions, SinfoSource, jupiter::{self, JupiterOptions}, leonardo::{self as leo, LeonardoOptions}
     },
 };
-
-pub mod graph;
-pub mod ir;
-pub mod parsers;
-pub mod placement;
-pub mod query;
-pub mod topology;
 
 // ---------------------------------------------------------------------------
 // CLI definition
@@ -167,7 +163,7 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
                     filter_opts,
                     LeonardoOptions::default(),
                 )?,
-                "jupiter" => jupiter::from_scontrol()?, // extend similarly when ready
+                "jupiter" => jupiter::from_scontrol_with_opts(sinfo_source, filter_opts, JupiterOptions::default())?, // extend similarly when ready
                 other => unknown_system(other),
             }
         } else if let Some(path) = &cli.topo_source.topology_file {

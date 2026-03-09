@@ -8,10 +8,24 @@
 use crate::ir::entity::EntityKind;
 use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
-use crate::parsers::sinfo::{index_by_hostname, NodeInfo, NodeState};
+use crate::parsers::sinfo::{self, NodeInfo, NodeState, index_by_hostname};
 use crate::parsers::slurm::NodeListParseError;
 
 pub mod leonardo;
+pub mod jupiter;
+
+pub enum SinfoSource {
+    Command,
+    File(std::path::PathBuf),
+}
+
+fn resolve_sinfo(source: Option<SinfoSource>) -> Result<Option<Vec<NodeInfo>>, NodeListParseError> {
+    match source {
+        None => Ok(None),
+        Some(SinfoSource::Command) => Ok(Some(sinfo::from_sinfo_command()?)),
+        Some(SinfoSource::File(path)) => Ok(Some(sinfo::from_sinfo_file(path)?)),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Options shared across all parsers

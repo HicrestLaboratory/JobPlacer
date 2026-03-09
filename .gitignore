@@ -17,5 +17,7 @@ Cargo.lock
 
 # ignore json files
 *.json
+!example/queries/*.json
+!example/placements/*.json
 
 *__pycache__/
