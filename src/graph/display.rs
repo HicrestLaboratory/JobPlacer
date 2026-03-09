@@ -1,23 +1,60 @@
-use petgraph::graph::Graph as PetGraph;
-use petgraph::visit::EdgeRef;
-use crate::ir::topology_ir::TopologyIR;
-use crate::ir::id::Id;
-use crate::ir::entity::EntityKind;
-use std::collections::{HashSet, HashMap};
+//! DOT/Graphviz renderer — cluster-based Dragonfly layout.
+//!
+//! # Layout hierarchy (maps directly to DOT subgraph clusters)
+//! ```
+//! graph G
+//!  └─ cluster_cell_N        (one per cell, labelled with cell id)
+//!      └─ cluster_rack_N_R  (one per rack inside the cell)
+//!          └─ cluster_l1_N_R_L  (one per L1 switch: the switch + its compute nodes)
+//!              ├─ L1 switch node  (diamond)
+//!              └─ compute nodes   (rounded rectangles)
+//! ```
+//!
+//! `dot` enforces containment: nodes declared inside a cluster are always
+//! drawn inside its bounding box.  No manual coordinate math needed.
+//!
+//! Inter-cell dragonfly links are omitted; the count is annotated on each
+//! cell cluster label.  L2 switches are optionally rendered inside the rack
+//! cluster, controlled by [`DisplayOptions`].
+
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 
-/// Maps job name -> set of compute node Id strings.
+use crate::ir::entity::{Entity, EntityKind};
+use crate::ir::id::Id;
+use crate::ir::topology_ir::TopologyIR;
+
 pub type Allocations = HashMap<String, HashSet<String>>;
 
 // ---------------------------------------------------------------------------
-// Color / pattern palette  (Cartesian product: 10 colors × 5 styles = 50)
+// Display options
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct DisplayOptions {
+    /// Render L2 switches inside each rack cluster. Default: false.
+    pub show_l2_switches: bool,
+    /// Render edges (L1↔compute, and optionally L1↔L2). Default: true.
+    pub show_edges: bool,
+}
+
+impl Default for DisplayOptions {
+    fn default() -> Self {
+        Self {
+            show_l2_switches: false,
+            show_edges: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Colour palette
 // ---------------------------------------------------------------------------
 
 const BASE_COLORS: &[&str] = &[
-    "#E63946", "#2196F3", "#4CAF50", "#FF9800", "#9C27B0",
-    "#00BCD4", "#FFEB3B", "#795548", "#607D8B", "#E91E63",
+    "#E63946", "#2196F3", "#4CAF50", "#FF9800", "#9C27B0", "#00BCD4", "#FFEB3B", "#795548",
+    "#607D8B", "#E91E63",
 ];
-
 const PATTERNS: &[&str] = &[
     "filled",
     "filled,dashed",
@@ -25,297 +62,406 @@ const PATTERNS: &[&str] = &[
     "filled,bold",
     "diagonals,filled",
 ];
-
-fn allocation_style(index: usize) -> (&'static str, &'static str) {
-    let color   = BASE_COLORS[index % BASE_COLORS.len()];
-    let pattern = PATTERNS[(index / BASE_COLORS.len()) % PATTERNS.len()];
-    (color, pattern)
+fn alloc_style(i: usize) -> (&'static str, &'static str) {
+    (
+        BASE_COLORS[i % BASE_COLORS.len()],
+        PATTERNS[(i / BASE_COLORS.len()) % PATTERNS.len()],
+    )
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// IR helpers
 // ---------------------------------------------------------------------------
 
-fn get_label(id: &Id, ir: &TopologyIR) -> String {
-    match ir.entities.get(id) {
-        Some(entity) => match &entity.kind {
-            EntityKind::Compute              => id.0.clone(),
-            EntityKind::Group                => format!("Group {}", id.0),
-            EntityKind::Switch { level }     => format!("{} (L{})", id.0, level.unwrap_or(0)),
-        },
-        None => id.0.clone(),
+/// All L1 switches grouped by cell → rack, both levels sorted for stability.
+fn collect_cell_rack_l1(ir: &TopologyIR) -> BTreeMap<String, BTreeMap<String, Vec<Id>>> {
+    let mut out: BTreeMap<String, BTreeMap<String, Vec<Id>>> = BTreeMap::new();
+    for entity in ir.entities.values() {
+        if !matches!(entity.kind, EntityKind::Switch { level: Some(0) }) {
+            continue;
+        }
+        let cell = entity
+            .meta
+            .get("cell")
+            .cloned()
+            .unwrap_or_else(|| "ungrouped".into());
+        let rack = entity
+            .meta
+            .get("rack")
+            .cloned()
+            .unwrap_or_else(|| "?".into());
+        out.entry(cell)
+            .or_default()
+            .entry(rack)
+            .or_default()
+            .push(entity.id.clone());
     }
+    for racks in out.values_mut() {
+        for switches in racks.values_mut() {
+            switches.sort_by(|a, b| a.0.cmp(&b.0));
+        }
+    }
+    out
 }
 
-/// Returns the entity level:
-///   L0 = compute / unknown  (leaves)
-///   L1 = first-tier switch  (connects directly to compute)
-///   L2 = second-tier switch (connects L1 switches / global)
-fn entity_level(id: &Id, ir: &TopologyIR) -> u32 {
-    match ir.entities.get(id) {
-        Some(e) => match &e.kind {
-            EntityKind::Compute             => 0,
-            EntityKind::Group               => 0,
-            EntityKind::Switch { level }    => level.unwrap_or(1) as u32,
-        },
-        None => 0,
-    }
+fn compute_children(l1_id: &Id, ir: &TopologyIR) -> Vec<Id> {
+    let mut nodes: Vec<Id> = ir
+        .contains
+        .get(l1_id)
+        .map(|ch| {
+            ch.iter()
+                .filter(|id| {
+                    matches!(
+                        ir.entities.get(id),
+                        Some(Entity {
+                            kind: EntityKind::Compute,
+                            ..
+                        })
+                    )
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    nodes.sort_by(|a, b| a.0.cmp(&b.0));
+    nodes
 }
 
-fn node_base_style(id: &Id, ir: &TopologyIR) -> (&'static str, &'static str, &'static str) {
-    // returns (fillcolor, shape, style)
-    match ir.entities.get(id) {
-        Some(e) => match &e.kind {
-            EntityKind::Compute => ("#AED6F1", "box",     "filled,rounded"),
-            EntityKind::Switch { level } => match level.unwrap_or(1) {
-                1 => ("#A9DFBF", "diamond", "filled"),
-                _ => ("#F9E79F", "hexagon", "filled"),   // L2+
-            },
-            EntityKind::Group   => ("#D7DBDD", "ellipse", "filled"),
-        },
-        None => ("#AED6F1", "box", "filled,rounded"),
-    }
+fn l2_in_rack(cell: &str, rack: &str, ir: &TopologyIR) -> Vec<Id> {
+    let mut out: Vec<Id> = ir
+        .entities
+        .values()
+        .filter(|e| {
+            matches!(e.kind, EntityKind::Switch { level: Some(1) })
+                && e.meta.get("cell").map(|s| s.as_str()) == Some(cell)
+                && e.meta.get("rack").map(|s| s.as_str()) == Some(rack)
+        })
+        .map(|e| e.id.clone())
+        .collect();
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
 }
 
-fn write_node(
-    file: &mut std::fs::File,
-    id: &Id,
-    ir: &TopologyIR,
-    node_alloc: &HashMap<String, (String, usize)>,
-    indent: &str,
-) {
-    let label = get_label(id, ir);
-    let (base_color, shape, base_style) = node_base_style(id, ir);
+fn inter_cell_link_count(cell: &str, ir: &TopologyIR) -> usize {
+    let cell_ids: HashSet<&Id> = ir
+        .entities
+        .values()
+        .filter(|e| {
+            matches!(e.kind, EntityKind::Switch { .. })
+                && e.meta.get("cell").map(|s| s.as_str()) == Some(cell)
+        })
+        .map(|e| &e.id)
+        .collect();
 
-    let attrs = if let Some((job, idx)) = node_alloc.get(&id.0) {
-        let (color, style) = allocation_style(*idx);
-        format!(
-            "shape={shape} style=\"{style}\" fillcolor=\"{color}\" \
-             label=\"{label}\" tooltip=\"{job}\" \
-             margin=0.05 width=0 height=0 fontsize=9",
-        )
+    ir.links
+        .iter()
+        .filter(|lnk| {
+            lnk.weight >= 2.0 && (cell_ids.contains(&lnk.from) || cell_ids.contains(&lnk.to))
+        })
+        .count()
+}
+
+// ---------------------------------------------------------------------------
+// DOT node emitters
+// ---------------------------------------------------------------------------
+
+fn emit_l1_switch(out: &mut impl Write, id: &Id, alloc: &HashMap<String, (String, usize)>) {
+    let (fill, style, tooltip) = if let Some((job, idx)) = alloc.get(&id.0) {
+        let (c, s) = alloc_style(*idx);
+        (c.to_string(), s.to_string(), format!(" tooltip=\"{job}\""))
     } else {
-        format!(
-            "shape={shape} style=\"{base_style}\" fillcolor=\"{base_color}\" \
-             label=\"{label}\" \
-             margin=0.05 width=0 height=0 fontsize=9",
+        ("#A9DFBF".to_string(), "filled".to_string(), String::new())
+    };
+    writeln!(
+        out,
+        "    \"{id}\" [shape=diamond style=\"{style}\" fillcolor=\"{fill}\"{tooltip} \
+         label=\"{id}\" fontsize=7 width=0.55 height=0.38 fixedsize=true];",
+        id = id.0,
+    )
+    .unwrap();
+}
+
+fn emit_l2_switch(out: &mut impl Write, id: &Id, alloc: &HashMap<String, (String, usize)>) {
+    let (fill, style, tooltip) = if let Some((job, idx)) = alloc.get(&id.0) {
+        let (c, s) = alloc_style(*idx);
+        (c.to_string(), s.to_string(), format!(" tooltip=\"{job}\""))
+    } else {
+        ("#F0B27A".to_string(), "filled".to_string(), String::new())
+    };
+    writeln!(
+        out,
+        "    \"{id}\" [shape=hexagon style=\"{style}\" fillcolor=\"{fill}\"{tooltip} \
+         label=\"{id}\" fontsize=7 width=0.55 height=0.38 fixedsize=true];",
+        id = id.0,
+    )
+    .unwrap();
+}
+
+fn emit_compute_node(out: &mut impl Write, id: &Id, alloc: &HashMap<String, (String, usize)>) {
+    let (fill, style, tooltip) = if let Some((job, idx)) = alloc.get(&id.0) {
+        let (c, s) = alloc_style(*idx);
+        (c.to_string(), s.to_string(), format!(" tooltip=\"{job}\""))
+    } else {
+        (
+            "#AED6F1".to_string(),
+            "filled,rounded".to_string(),
+            String::new(),
         )
     };
-
-    writeln!(file, "{indent}\"{}\" [{}];", label, attrs).unwrap();
+    writeln!(
+        out,
+        "    \"{id}\" [shape=box style=\"{style}\" fillcolor=\"{fill}\"{tooltip} \
+         label=\"{id}\" fontsize=6 width=0.72 height=0.22 fixedsize=true];",
+        id = id.0,
+    )
+    .unwrap();
 }
 
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
-pub fn display_graph<Ty>(
-    graph: &PetGraph<Id, f32, Ty>,
+pub fn display_graph(
     ir: &TopologyIR,
     output_file: &str,
     allocations: Option<&Allocations>,
-) where
-    Ty: petgraph::EdgeType,
-{
-    // ------------------------------------------------------------------
-    // Build allocation lookup: node_id_str -> (job_name, palette_index)
-    // ------------------------------------------------------------------
-    let mut node_alloc: HashMap<String, (String, usize)> = HashMap::new();
-    if let Some(allocs) = allocations {
-        let mut jobs: Vec<&String> = allocs.keys().collect();
+    opts: &DisplayOptions,
+) {
+    println!("{ir}");
+
+    let mut alloc: HashMap<String, (String, usize)> = HashMap::new();
+    if let Some(a) = allocations {
+        let mut jobs: Vec<&String> = a.keys().collect();
         jobs.sort();
-        for (idx, job) in jobs.iter().enumerate() {
-            for node_id in &allocs[*job] {
-                node_alloc.insert(node_id.clone(), ((*job).clone(), idx));
+        for (i, job) in jobs.iter().enumerate() {
+            for nid in &a[*job] {
+                alloc.insert(nid.clone(), ((*job).clone(), i));
             }
         }
     }
 
-    // ------------------------------------------------------------------
-    // Classify nodes by level
-    //   L0 → compute leaves
-    //   L1 → first-tier switches  (level == 1)
-    //   L2 → second-tier switches (level >= 2)
-    // ------------------------------------------------------------------
-    let mut l1_nodes: Vec<petgraph::graph::NodeIndex> = Vec::new();
-    let mut l2_nodes: Vec<petgraph::graph::NodeIndex> = Vec::new();
-    let mut l0_nodes: Vec<petgraph::graph::NodeIndex> = Vec::new();
+    let cell_rack_l1 = collect_cell_rack_l1(ir);
+    let dot_path = "topology.dot";
+    let mut f = std::fs::File::create(dot_path).expect("cannot create topology.dot");
 
-    for ni in graph.node_indices() {
-        match entity_level(&graph[ni], ir) {
-            1      => l1_nodes.push(ni),
-            l if l >= 2 => l2_nodes.push(ni),
-            _      => l0_nodes.push(ni),
-        }
-    }
+    writeln!(f, "digraph G {{").unwrap();
+    writeln!(f, "  layout=dot;").unwrap();
+    writeln!(f, "  rankdir=TB;").unwrap(); // can also use RL (right-left)
+    writeln!(f, "  newrank=true;").unwrap();
+    writeln!(f, "  compound=true;").unwrap();
+    writeln!(f, "  clusterrank=local;").unwrap();
+    writeln!(f, "  ranksep=0.25;").unwrap();
+    writeln!(f, "  nodesep=0.35;").unwrap();
+    writeln!(f, "  splines=false;").unwrap(); // this curves edges
+    writeln!(f, "  node [fontname=\"Helvetica\"];").unwrap();
+    writeln!(f, "  edge [dir=none penwidth=0.6 color=\"#888888\"];").unwrap();
+    writeln!(f, "  graph [fontname=\"Helvetica\" labeljust=l];").unwrap();
+    writeln!(f).unwrap();
 
-    // ------------------------------------------------------------------
-    // Build per-L1-switch clusters via graph adjacency.
-    // For every L1 switch, collect its directly connected L0 nodes.
-    // A compute node is assigned to the first L1 switch it appears under
-    // (sorted by id) to avoid duplicates.
-    // ------------------------------------------------------------------
-    let mut l1_children: HashMap<petgraph::graph::NodeIndex, Vec<petgraph::graph::NodeIndex>> =
-        HashMap::new();
-    let mut assigned_l0: HashSet<petgraph::graph::NodeIndex> = HashSet::new();
+    let mut edges: Vec<(String, String)> = Vec::new();
 
-    let mut l1_sorted = l1_nodes.clone();
-    l1_sorted.sort_by_key(|&ni| &graph[ni].0);
+    // NEW: anchors for aligning cells horizontally
+    let mut cell_anchors: Vec<String> = Vec::new();
 
-    for &l1 in &l1_sorted {
-        let mut children: Vec<_> = graph
-            .edges(l1)
-            .filter_map(|e| {
-                let nb = if e.source() == l1 { e.target() } else { e.source() };
-                if entity_level(&graph[nb], ir) == 0 && !assigned_l0.contains(&nb) {
-                    Some(nb)
-                } else {
-                    None
+    for (ci, (cell_name, racks)) in cell_rack_l1.iter().enumerate() {
+        let ice = inter_cell_link_count(cell_name, ir);
+        let ice_str = if ice > 0 {
+            format!(" (↔ {ice} inter-cell links)")
+        } else {
+            String::new()
+        };
+
+        writeln!(f, "  subgraph cluster_cell_{ci} {{").unwrap();
+        writeln!(f, "    label=\"{cell_name}{ice_str}\";").unwrap();
+        writeln!(f, "    style=\"filled,rounded\";").unwrap();
+        writeln!(f, "    fillcolor=\"#EBF5FB\";").unwrap();
+        writeln!(f, "    color=\"#1A5276\";").unwrap();
+        writeln!(f, "    penwidth=2.5;").unwrap();
+        writeln!(f, "    fontsize=11;").unwrap();
+
+        let anchor = format!("__cell_anchor_{ci}");
+        cell_anchors.push(anchor.clone());
+        writeln!(
+            f,
+            "    \"{anchor}\" [shape=point width=0 height=0 label=\"\" style=invis];"
+        )
+        .unwrap();
+
+        writeln!(f).unwrap();
+
+        for (ri, (rack_name, l1_ids)) in racks.iter().enumerate() {
+            writeln!(f, "    subgraph cluster_rack_{ci}_{ri} {{").unwrap();
+            writeln!(f, "      label=\"rack {rack_name}\";").unwrap();
+            writeln!(f, "      style=\"filled,rounded\";").unwrap();
+            writeln!(f, "      fillcolor=\"#F2F3F4\";").unwrap();
+            writeln!(f, "      color=\"#2C3E50\";").unwrap();
+            writeln!(f, "      penwidth=1.5;").unwrap();
+            writeln!(f, "      fontsize=9;").unwrap();
+            writeln!(f).unwrap();
+
+            if opts.show_l2_switches {
+                let l2_ids = l2_in_rack(cell_name, rack_name, ir);
+                for l2_id in &l2_ids {
+                    emit_l2_switch(&mut f, l2_id, &alloc);
+
+                    if opts.show_edges {
+                        for l1_id in l1_ids {
+                            let l1_pair = ir
+                                .entities
+                                .get(l1_id)
+                                .and_then(|e| e.meta.get("pair_index"));
+                            let l2_pair = ir
+                                .entities
+                                .get(l2_id)
+                                .and_then(|e| e.meta.get("pair_index"));
+                            if l1_pair.is_some() && l1_pair == l2_pair {
+                                edges.push((l1_id.0.clone(), l2_id.0.clone()));
+                            }
+                        }
+                    }
                 }
-            })
-            .collect();
-        children.sort_by_key(|&ni| &graph[ni].0);
-        for &c in &children {
-            assigned_l0.insert(c);
-        }
-        l1_children.insert(l1, children);
-    }
-
-    let ungrouped_l0: Vec<_> = l0_nodes
-        .iter()
-        .filter(|&&ni| !assigned_l0.contains(&ni))
-        .copied()
-        .collect();
-
-    // ------------------------------------------------------------------
-    // Write DOT file
-    // ------------------------------------------------------------------
-    let dot_file = "topology.dot";
-    let mut file = std::fs::File::create(dot_file).expect("Failed to create DOT file");
-
-    writeln!(file, "graph G {{").unwrap();
-    writeln!(file, "  rankdir=TB;").unwrap();
-    writeln!(file, "  splines=polyline;").unwrap();
-    writeln!(file, "  nodesep=0.25;").unwrap();
-    writeln!(file, "  ranksep=0.8;").unwrap();
-    writeln!(file, "  fontname=\"Helvetica\"; fontsize=10;").unwrap();
-    writeln!(file, "  edge [dir=none, penwidth=1.2, color=\"#555555\"];").unwrap();
-    writeln!(file, "  node [fontname=\"Helvetica\"];").unwrap();
-    writeln!(file).unwrap();
-
-    // ---- L2 switches (top tier, rank=min) --------------------------------
-    if !l2_nodes.is_empty() {
-        writeln!(file, "  subgraph cluster_l2 {{").unwrap();
-        writeln!(file, "    label=\"L2 Switches\"; style=dashed; color=\"#888888\";").unwrap();
-        writeln!(file, "    rank=min;").unwrap();
-        let mut l2_sorted = l2_nodes.clone();
-        l2_sorted.sort_by_key(|&ni| &graph[ni].0);
-        for &ni in &l2_sorted {
-            write_node(&mut file, &graph[ni], ir, &node_alloc, "    ");
-        }
-        writeln!(file, "  }}").unwrap();
-        writeln!(file).unwrap();
-    }
-
-    // ---- One cluster per L1 switch ---------------------------------------
-    // Each cluster contains the L1 switch node + all its L0 children.
-    for (cl_idx, &l1) in l1_sorted.iter().enumerate() {
-        let l1_id    = &graph[l1];
-        let l1_label = get_label(l1_id, ir);
-        writeln!(file, "  subgraph cluster_l1_{cl_idx} {{").unwrap();
-        writeln!(
-            file,
-            "    label=\"{l1_label}\"; style=filled; fillcolor=\"#F4F6F7\"; \
-             color=\"#2C3E50\"; penwidth=1.5; margin=6;",
-        ).unwrap();
-
-        write_node(&mut file, l1_id, ir, &node_alloc, "    ");
-
-        for &c in &l1_children[&l1] {
-            write_node(&mut file, &graph[c], ir, &node_alloc, "    ");
-        }
-        writeln!(file, "  }}").unwrap();
-        writeln!(file).unwrap();
-    }
-
-    // ---- Compute nodes not under any L1 switch ---------------------------
-    if !ungrouped_l0.is_empty() {
-        writeln!(file, "  subgraph cluster_ungrouped {{").unwrap();
-        writeln!(
-            file,
-            "    label=\"Compute (ungrouped)\"; style=dashed; color=\"#AAB7B8\";",
-        ).unwrap();
-        let mut ug = ungrouped_l0.clone();
-        ug.sort_by_key(|&ni| &graph[ni].0);
-        for &ni in &ug {
-            write_node(&mut file, &graph[ni], ir, &node_alloc, "    ");
-        }
-        writeln!(file, "  }}").unwrap();
-        writeln!(file).unwrap();
-    }
-
-    // ---- Edges -----------------------------------------------------------
-    let mut drawn_edges: HashSet<(String, String)> = HashSet::new();
-    for edge in graph.edge_references() {
-        let a  = &graph[edge.source()];
-        let b  = &graph[edge.target()];
-        let la = get_label(a, ir);
-        let lb = get_label(b, ir);
-        let key = if la < lb { (la.clone(), lb.clone()) } else { (lb.clone(), la.clone()) };
-        if drawn_edges.insert(key) {
-            writeln!(file, "  \"{la}\" -- \"{lb}\";").unwrap();
-        }
-    }
-
-    // ---- Allocation legend -----------------------------------------------
-    if let Some(allocs) = allocations {
-        if !allocs.is_empty() {
-            writeln!(file).unwrap();
-            writeln!(file, "  subgraph cluster_legend {{").unwrap();
-            writeln!(
-                file,
-                "    label=\"Allocations\"; style=filled; fillcolor=\"#FDFEFE\"; \
-                 color=\"#2C3E50\"; rank=sink;",
-            ).unwrap();
-            let mut jobs: Vec<&String> = allocs.keys().collect();
-            jobs.sort();
-            for (idx, job) in jobs.iter().enumerate() {
-                let (color, style) = allocation_style(idx);
-                writeln!(
-                    file,
-                    "    \"legend_{idx}\" [label=\"{job}\" shape=box \
-                     style=\"{style}\" fillcolor=\"{color}\" \
-                     margin=0.05 width=0 height=0 fontsize=9];",
-                ).unwrap();
+                writeln!(f).unwrap();
             }
-            writeln!(file, "  }}").unwrap();
+
+            // L1-group sub-clusters
+            for (li, l1_id) in l1_ids.iter().enumerate() {
+                let compute = compute_children(l1_id, ir);
+
+                writeln!(f, "      subgraph cluster_l1_{ci}_{ri}_{li} {{").unwrap();
+                writeln!(f, "        label=\"\";").unwrap();
+                writeln!(f, "        style=\"filled,rounded\";").unwrap();
+                writeln!(f, "        fillcolor=\"#FDFEFE\";").unwrap();
+                writeln!(f, "        color=\"#AAB7B8\";").unwrap();
+                writeln!(f, "        penwidth=0.8;").unwrap();
+                writeln!(f).unwrap();
+
+                emit_l1_switch(&mut f, l1_id, &alloc);
+
+                for node_id in &compute {
+                    emit_compute_node(&mut f, node_id, &alloc);
+
+                    if opts.show_edges {
+                        edges.push((l1_id.0.clone(), node_id.0.clone()));
+                    }
+                }
+
+                // Force vertical ordering using invisible edges
+if !compute.is_empty() {
+    writeln!(
+        f,
+        "        \"{}\" -> \"{}\" [style=invis weight=2 minlen=1];",
+        l1_id.0,
+        compute[0].0
+    ).unwrap();
+
+    for pair in compute.windows(2) {
+        writeln!(
+            f,
+            "        \"{}\" -> \"{}\" [style=invis weight=2 minlen=1];",
+            pair[0].0,
+            pair[1].0
+        ).unwrap();
+    }
+}
+
+                writeln!(f, "      }}").unwrap();
+            }
+
+            writeln!(f, "    }}").unwrap();
+            writeln!(f).unwrap();
+        }
+
+        writeln!(f, "  }}").unwrap();
+        writeln!(f).unwrap();
+    }
+
+    // ===================================================================
+    // Force all cell clusters onto the same horizontal rank
+    // ===================================================================
+    if cell_anchors.len() > 1 {
+        writeln!(f).unwrap();
+        writeln!(f, "  {{ rank=same;").unwrap();
+        for a in &cell_anchors {
+            writeln!(f, "    \"{a}\";").unwrap();
+        }
+        writeln!(f, "  }}").unwrap();
+
+        for pair in cell_anchors.windows(2) {
+            writeln!(f, "  \"{}\" -> \"{}\" [style=invis];", pair[0], pair[1]).unwrap();
         }
     }
 
-    writeln!(file, "}}").unwrap();
+    if opts.show_edges {
+        let mut drawn: HashSet<(String, String)> = HashSet::new();
+        for (a, b) in &edges {
+            let key = if a <= b {
+                (a.clone(), b.clone())
+            } else {
+                (b.clone(), a.clone())
+            };
+            if drawn.insert(key) {
+                writeln!(f, "  \"{a}\" -> \"{b}\";").unwrap();
+            }
+        }
+    }
 
-    // ------------------------------------------------------------------
-    // Invoke Graphviz
-    // ------------------------------------------------------------------
-    let format = if output_file.ends_with(".png") {
-        "png"
-    } else if output_file.ends_with(".svg") {
+    if let Some(a) = allocations {
+        if !a.is_empty() {
+            writeln!(f).unwrap();
+            writeln!(f, "  subgraph cluster_legend {{").unwrap();
+            writeln!(
+                f,
+                "    label=\"Legend\"; style=filled; fillcolor=white; fontsize=10;"
+            )
+            .unwrap();
+
+            let mut jobs: Vec<&String> = a.keys().collect();
+            jobs.sort();
+
+            for (i, job) in jobs.iter().enumerate() {
+                let (color, style) = alloc_style(i);
+                writeln!(
+                    f,
+                    "    \"__legend_{i}\" [shape=box style=\"{style}\" fillcolor=\"{color}\" \
+                     label=\"{job}\" fontsize=8 width=1.4 height=0.28 fixedsize=true];",
+                )
+                .unwrap();
+
+                if i > 0 {
+                    writeln!(
+                        f,
+                        "    \"__legend_{}\" -> \"__legend_{}\" [style=invis];",
+                        i - 1,
+                        i
+                    )
+                    .unwrap();
+                }
+            }
+
+            writeln!(f, "  }}").unwrap();
+        }
+    }
+
+    writeln!(f, "}}").unwrap();
+    drop(f);
+
+    let fmt = if output_file.ends_with(".svg") {
         "svg"
+    } else if output_file.ends_with(".png") {
+        "png"
     } else {
-        panic!("Output must end with .png or .svg");
+        panic!("output must end in .svg or .png")
     };
 
-    let status = std::process::Command::new("dot")
-        .arg(format!("-T{format}"))
-        .arg(dot_file)
-        .arg("-o")
-        .arg(output_file)
+    let ok = std::process::Command::new("dot")
+        .args([format!("-T{fmt}").as_str(), dot_path, "-o", output_file])
         .status()
-        .expect("Failed to run Graphviz (please install it on your system)");
+        .expect("failed to run `dot`")
+        .success();
 
-    if status.success() {
-        println!("Graph image generated at {output_file}");
+    if ok {
+        println!("Graph written to {output_file}");
     } else {
-        eprintln!("Graphviz failed");
+        eprintln!("`dot` failed — DOT source preserved at {dot_path}");
     }
 }

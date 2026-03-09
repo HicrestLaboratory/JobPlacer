@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt;
 use std::process::Command;
 use log::info;
@@ -27,7 +28,7 @@ pub struct NodeListParseError {
 }
 
 impl NodeListParseError {
-    fn new(msg: impl Into<String>) -> Self {
+    pub fn new(msg: impl Into<String>) -> Self {
         Self { msg: msg.into() }
     }
 }
@@ -177,4 +178,17 @@ fn split_preserving_brackets(s: &str) -> Result<Vec<String>, NodeListParseError>
     }
 
     Ok(result)
+}
+
+/// Parse line into key-value map
+pub fn parse_line(line: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for part in line.split_whitespace() {
+        if let Some(pos) = part.find('=') {
+            let key = part[..pos].to_string();
+            let val = part[pos+1..].to_string();
+            map.insert(key, val);
+        }
+    }
+    map
 }

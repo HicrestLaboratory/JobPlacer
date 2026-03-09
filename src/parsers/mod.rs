@@ -1,10 +1,10 @@
 use std::process::Command;
 
 pub mod manual;
-pub mod leonardo;
 pub mod jupiter;
 
 pub mod slurm;
+pub mod sinfo;
 
 fn run_scontrol_show_topology() -> String {
     let output = Command::new("scontrol")

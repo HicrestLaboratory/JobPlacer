@@ -91,7 +91,7 @@ echo "=========================================="
 echo "Step 3: Setting up Python wrapper"
 echo "=========================================="
 
-PYTHON_WRAPPER="$SCRIPT_DIR/python/nodelists_generator_rust.py"
+PYTHON_WRAPPER="$SCRIPT_DIR/placer/nodelists_generator.py"
 if [ -f "$PYTHON_WRAPPER" ]; then
     # Option 1: Add symlink or copy to site-packages
     # For simplicity, we'll just note the path

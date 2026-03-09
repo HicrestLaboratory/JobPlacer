@@ -3,7 +3,10 @@ use crate::ir::entity::{Entity, EntityKind};
 use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
 use crate::parsers::run_scontrol_show_topology;
-use crate::parsers::slurm::{NodeListParseError, expand_nodelist};
+use crate::parsers::slurm::{NodeListParseError, expand_nodelist, parse_line};
+
+// TODO move to topology
+// const L2_TO_L1_PORTS: u32 = 10;
 
 /// Parse Jupiter topology by executing `scontrol show topology`
 pub fn from_scontrol() -> Result<TopologyIR, NodeListParseError> {
@@ -116,17 +119,4 @@ fn parse_topology(output: String) -> Result<TopologyIR, NodeListParseError> {
     }
 
     Ok(ir)
-}
-
-/// Parse line into key-value map
-fn parse_line(line: &str) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for part in line.split_whitespace() {
-        if let Some(pos) = part.find('=') {
-            let key = part[..pos].to_string();
-            let val = part[pos+1..].to_string();
-            map.insert(key, val);
-        }
-    }
-    map
 }

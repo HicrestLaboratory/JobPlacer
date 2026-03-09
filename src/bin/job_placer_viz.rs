@@ -1,5 +1,10 @@
-use clap::{Parser};
-use job_placer::{Cli, graph::{display::display_graph, graph_from_ir}, init_logger, ir::id::Id, load_topology, resolve_nodes_filter};
+use clap::Parser;
+use job_placer::{
+    graph::display::{display_graph, DisplayOptions},
+    init_logger,
+    ir::id::Id,
+    load_topology, resolve_nodes_filter, Cli,
+};
 use log::info;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,7 +15,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load topology
     // -----------------------------------------------------------------------
     let mut ir = load_topology(&cli)?;
-    let mut candidate_anchors: Vec<Id> = ir.entities.keys().map(|id| id.clone()).collect();
 
     if !cli.all_nodes {
         // -----------------------------------------------------------------------
@@ -18,18 +22,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // -----------------------------------------------------------------------
         let allocated_hostnames = resolve_nodes_filter(&cli)?;
         info!("✓ Allocation: {} nodes", allocated_hostnames.len());
-        candidate_anchors = allocated_hostnames
+        let filter: Vec<Id> = allocated_hostnames
             .iter()
             .map(|n| Id::from(n.as_str()))
             .collect();
 
         // println!("{:#?}", candidate_anchors);
 
-        ir = ir.filter_with_topology(&candidate_anchors);
+        ir = ir.filter_with_topology(&filter);
     }
 
-    let graph = graph_from_ir(&ir);
-    display_graph(&graph.0, &ir, "topo.svg", None);
+    display_graph(&ir, "topo.svg", None, &DisplayOptions::default());
 
     Ok(())
 }
