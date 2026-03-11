@@ -1,21 +1,17 @@
 use clap::Parser;
 use job_placer::{
-    Cli, graph::display::{Allocations, DisplayOptions, display_graph}, init_logger, ir::{entity::EntityKind, id::Id, topology_ir::TopologyIR}, load_topology, resolve_nodes_filter
+    graph::display::{display_graph, Allocations, DisplayOptions},
+    init_logger,
+    ir::{entity::EntityKind, id::Id, topology_ir::TopologyIR},
+    load_topology, resolve_nodes_filter, Cli,
 };
 use log::info;
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    io::{self, Read},
+};
 
 use job_placer::placement::{JobRequest, PlacementResult, Placer};
-
-// Hardcoded query — replace with file/CLI arg later
-const PLACEMENT_QUERY: &str = r#"
-{
-  "job_1": { "strategy": "DP", "nodes": 3,  "placement_class": "inter-group"  },
-  "job_2": { "strategy": "DP", "nodes": 4,  "placement_class": "intra-l1"     },
-  "job_3": { "strategy": "DP", "nodes": 2,  "placement_class": "intra-group"  },
-  "job_4": { "strategy": "DP", "nodes": 6,  "placement_class": "intra-group"  }
-}
-"#;
 
 pub fn placement_to_allocations(result: &PlacementResult) -> Option<Allocations> {
     match result {
@@ -94,7 +90,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     // Parse placement query
     // -----------------------------------------------------------------------
-    let jobs: BTreeMap<String, JobRequest> = serde_json::from_str(PLACEMENT_QUERY)?;
+    let json_content = match &cli.query {
+        Some(path) => {
+            info!("Loading query from: {}", path.display());
+            std::fs::read_to_string(path)?
+        }
+        None => {
+            info!("Reading query from stdin…");
+            let mut buf = String::new();
+            io::stdin().read_to_string(&mut buf)?;
+            buf
+        }
+    };
+    let jobs: BTreeMap<String, JobRequest> = serde_json::from_str(json_content.as_str())?;
     info!("✓ Placement query: {} jobs", jobs.len());
 
     // -----------------------------------------------------------------------

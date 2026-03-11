@@ -23,7 +23,7 @@ pub enum PlacementClass {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct JobRequest {
-    pub strategy: String,
+    pub job_kind: String,
     pub nodes: usize,
     pub placement_class: PlacementClass,
 }
