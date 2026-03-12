@@ -69,6 +69,10 @@ pub struct Cli {
         help = "RNG seed for placement (different seeds yield different placements)"
     )]
     pub seed: Option<u64>,
+
+    /// Enable graphical visualization
+    #[arg(short = 'z', long)]
+    pub visualize: bool,
 }
 
 // ---------------------------------------------------------------------------

@@ -281,7 +281,6 @@ class JobPlacer:
         cmd = self._build_command(seed_override=seed, extra_args=extra_args)
         
         try:
-            print(cmd)
             proc = subprocess.run(
                 cmd,
                 input=query_json,

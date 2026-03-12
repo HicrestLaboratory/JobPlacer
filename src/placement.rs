@@ -13,7 +13,7 @@ use crate::ir::topology_ir::TopologyIR;
 // Public types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PlacementClass {
     IntraL1,

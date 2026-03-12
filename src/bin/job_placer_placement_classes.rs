@@ -119,13 +119,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    if let Some(allocations) = placement_to_allocations(&result) {
-        display_graph(
-            &filter_ir_by_allocations(&ir, &allocations),
-            "topology_placement.svg",
-            Some(&allocations),
-            &DisplayOptions::default(),
-        );
+    if cli.visualize {
+        if let Some(allocations) = placement_to_allocations(&result) {
+            display_graph(
+                &filter_ir_by_allocations(&ir, &allocations),
+                "topology_placement.svg",
+                Some(&allocations),
+                &DisplayOptions::default(),
+            );
+        }
     }
 
     Ok(())
