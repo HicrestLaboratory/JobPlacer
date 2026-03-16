@@ -119,11 +119,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    if cli.visualize {
+    if cli.visualize || cli.out_svg.is_some() {
         if let Some(allocations) = placement_to_allocations(&result) {
             display_graph(
                 &filter_ir_by_allocations(&ir, &allocations),
-                "topology_placement.svg",
+                if let Some(f) = cli.out_svg {
+                    f
+                } else {
+                    String::from("topology_placement.svg")
+                }
+                .as_str(),
                 Some(&allocations),
                 &DisplayOptions::default(),
             );

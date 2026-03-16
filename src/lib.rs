@@ -73,6 +73,10 @@ pub struct Cli {
     /// Enable graphical visualization
     #[arg(short = 'z', long)]
     pub visualize: bool,
+
+    /// File to write the SVG to
+    #[arg(long)]
+    pub out_svg: Option<String>,
 }
 
 // ---------------------------------------------------------------------------

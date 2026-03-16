@@ -255,6 +255,7 @@ class JobPlacer:
         seed: Optional[int] = None,
         timeout: float = 5.0,
         extra_args: Optional[List[str]] = None,
+        svg_out: Optional[Path] = None
     ) -> PlacementResult:
         """Run the placer for the given job requests.
 
@@ -277,8 +278,14 @@ class JobPlacer:
             for name, req in jobs.items()
         }
         query_json = json.dumps(query)
+        
+        if svg_out:
+            if not extra_args:
+                extra_args = []
+            extra_args += ['--out-svg', str(svg_out.resolve())]
 
         cmd = self._build_command(seed_override=seed, extra_args=extra_args)
+        # print(' '.join(cmd))
         
         try:
             proc = subprocess.run(

@@ -20,6 +20,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 
+use log::info;
+
 use crate::ir::entity::{Entity, EntityKind};
 use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
@@ -230,7 +232,7 @@ pub fn display_graph(
     allocations: Option<&Allocations>,
     opts: &DisplayOptions,
 ) {
-    println!("{ir}");
+    info!("{ir}");
 
     let mut alloc: HashMap<String, (String, usize)> = HashMap::new();
     if let Some(a) = allocations {
@@ -463,7 +465,7 @@ if !compute.is_empty() {
         .success();
 
     if ok {
-        println!("Graph written to {output_file}");
+        info!("Graph written to {output_file}");
     } else {
         eprintln!("`dot` failed — DOT source preserved at {dot_path}");
     }
