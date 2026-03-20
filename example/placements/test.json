@@ -1,6 +1,9 @@
 {
-  "job_1": { "strategy": "DP", "nodes": 3,  "placement_class": "inter-group"  },
-  "job_2": { "strategy": "DP", "nodes": 4,  "placement_class": "intra-l1"     },
-  "job_3": { "strategy": "DP", "nodes": 2,  "placement_class": "intra-group"  },
-  "job_4": { "strategy": "DP", "nodes": 6,  "placement_class": "intra-group"  }
+  "inter-group_7n":           { "nodes": 7,  "placement_class": "inter-group"            },
+  "intra-l1_6n":              { "nodes": 6,  "placement_class": "intra-l1"               },
+  "intra-group_6n":           { "nodes": 6,  "placement_class": "intra-group"            },
+  "intra-group-same-l1-2_6n": { "nodes": 6,  "placement_class": "intra-group-same-l1-2"  },
+  "intra-group-same-l1-4_4n": { "nodes": 8,  "placement_class": "intra-group-same-l1-4"  },
+  "inter-group-same-l1-2_6n": { "nodes": 6,  "placement_class": "inter-group-same-l1-2"  },
+  "inter-group-same-l1-4_8n": { "nodes": 8,  "placement_class": "inter-group-same-l1-4"  }
 }

@@ -1,0 +1,52 @@
+[meta]
+system          = "haicgu"
+w_node_switch   = 1.0
+w_switch_switch = 1.0
+
+# -- Switches -------------------------------------------------------
+
+[[switch]]
+id    = "sw1"
+level = 1
+
+# -- Compute nodes --------------------------------------------------
+
+[[node]]
+id     = "cn19"
+switch = "sw1"
+
+[[node]]
+id     = "cn20"
+switch = "sw1"
+
+[[node]]
+id     = "cn21"
+switch = "sw1"
+
+[[node]]
+id     = "cn22"
+switch = "sw1"
+
+[[node]]
+id     = "cn23"
+switch = "sw1"
+
+[[node]]
+id     = "cn24"
+switch = "sw1"
+
+[[node]]
+id     = "cn25"
+switch = "sw1"
+
+[[node]]
+id     = "cn26"
+switch = "sw1"
+
+[[node]]
+id     = "cn27"
+switch = "sw1"
+
+[[node]]
+id     = "cn28"
+switch = "sw1"

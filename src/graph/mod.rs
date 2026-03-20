@@ -1,6 +1,6 @@
+use crate::ir::{topology_ir::TopologyIR, Id};
 use petgraph::graph::{Graph as PetGraph, NodeIndex};
 use petgraph::Undirected;
-use crate::ir::{topology_ir::TopologyIR, id::Id};
 use std::collections::HashMap;
 
 pub mod display;

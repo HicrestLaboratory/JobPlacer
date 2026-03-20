@@ -1,11 +1,15 @@
 """
-job_placer — Python library wrapper for the job_placer Rust CLI.
+cli_wrapper — Python library wrapper for the cli_wrapper Rust CLI.
 
 Typical usage
 -------------
-    from job_placer import JobPlacer, JobRequest, TopologySource, PlacementResult
+    from cli_wrapper import JobPlacer, JobRequest, TopologySource, PlacementResult
 
+    # Named system + topology file
     placer = JobPlacer(system="leonardo", topology_file="/path/to/topo.xml")
+
+    # TOML file (system-agnostic, detected by extension)
+    placer = JobPlacer(system="alps", topology=TopologySource.toml_file("/path/to/topo.toml"))
 
     result = placer.place({
         "train_a": JobRequest(num_nodes=4),
@@ -43,14 +47,12 @@ class JobRequest:
     Add or remove fields here if the Rust-side schema changes.
     """
     num_nodes: int
-    job_kind: str
-    placement_class: Optional[str] = None 
+    placement_class: Optional[str] = None
     extra: Dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         d = {
             "nodes": self.num_nodes,
-            "job_kind": self.job_kind,
         }
         if self.placement_class is not None:
             d["placement_class"] = self.placement_class
@@ -102,9 +104,14 @@ class TopologySource:
     """Namespace for topology source factory methods — mirrors the CLI flags."""
 
     @staticmethod
-    def yaml_file(path: Union[str, Path]) -> "_YamlFile":
-        """Load topology from a plain YAML file (system-agnostic)."""
-        return _YamlFile(Path(path))
+    def toml_file(path: Union[str, Path]) -> "_TomlFile":
+        """Load topology from a TOML file (system-agnostic, detected by .toml extension).
+
+        The Rust CLI auto-detects TOML files by their extension and routes them
+        through the TOML parser regardless of the --system flag.  You still need
+        to pass ``system`` to :class:`JobPlacer` because the CLI requires it.
+        """
+        return _TomlFile(Path(path))
 
     @staticmethod
     def system_file(system: str, path: Union[str, Path]) -> "_SystemFile":
@@ -113,7 +120,7 @@ class TopologySource:
         Parameters
         ----------
         system:
-            Supported values: ``"leonardo"``, ``"jupiter"``.
+            Supported values: ``"leonardo"``, ``"jupiter"``, ``"alps"``.
         path:
             Path to the system-specific topology file.
         """
@@ -126,11 +133,15 @@ class TopologySource:
 
 
 @dataclass
-class _YamlFile:
+class _TomlFile:
+    """TOML topology file — passed as --topology-file; system is still required by the CLI."""
     path: Path
 
-    def _apply(self, cmd: List[str]) -> None:
-        cmd += ["--topology-yaml", str(self.path)]
+    def system(self) -> Optional[str]:
+        return None  # caller must supply system separately
+
+    def _apply(self, cmd: List[str], system: str) -> None:
+        cmd += ["--system", system, "--topology-file", str(self.path)]
 
 
 @dataclass
@@ -138,7 +149,7 @@ class _SystemFile:
     system: str
     path: Path
 
-    def _apply(self, cmd: List[str]) -> None:
+    def _apply(self, cmd: List[str], system: str) -> None:  # system arg ignored; self.system wins
         cmd += ["--system", self.system, "--topology-file", str(self.path)]
 
 
@@ -146,11 +157,11 @@ class _SystemFile:
 class _SystemScontrol:
     system: str
 
-    def _apply(self, cmd: List[str]) -> None:
+    def _apply(self, cmd: List[str], system: str) -> None:
         cmd += ["--system", self.system, "--topology-scontrol"]
 
 
-_AnyTopologySource = Union[_YamlFile, _SystemFile, _SystemScontrol]
+_AnyTopologySource = Union[_TomlFile, _SystemFile, _SystemScontrol]
 
 
 # ---------------------------------------------------------------------------
@@ -162,37 +173,40 @@ class JobPlacer:
 
     Parameters
     ----------
+    system:
+        The cluster system name.  Required.
+        Currently supported: ``"leonardo"``, ``"jupiter"``, ``"alps"``.
     topology:
         A topology source object created via :class:`TopologySource` factory
         methods.  You may also use the shorthand keyword arguments below.
-    system:
-        Shorthand: named system (``"leonardo"`` or ``"jupiter"``).
-        Must be combined with exactly one of ``topology_file`` or
-        ``topology_scontrol=True``.
-    topology_yaml:
-        Shorthand: path to a YAML topology file (system-agnostic).
     topology_file:
-        Shorthand: path to a system-specific topology file.
-        Requires ``system``.
+        Shorthand: path to a system-specific topology file (or a ``.toml``
+        file for system-agnostic TOML input).  Requires ``system``.
     topology_scontrol:
         Shorthand: discover topology via scontrol.  Requires ``system``.
     nodelist:
         Restrict placement to these hostnames (comma-separated string or list).
         When omitted the wrapper uses the SLURM environment if available.
+        Mutually exclusive with ``all_nodes``.
     all_nodes:
         Consider all available nodes (disables nodelist filtering).
+        Mutually exclusive with ``nodelist``.
     partition:
-        Keep only nodes belonging to this partition.
+        Keep only nodes belonging to this partition (e.g. ``"boost_usr_prod"``).
     include_unavailable:
-        Include draining / drained / down nodes.
+        Include draining / drained / down nodes instead of filtering them out.
     sinfo:
-        Run ``sinfo`` live for partition / state enrichment.
+        Run ``sinfo`` live to get partition and node-state information.
+        Mutually exclusive with ``sinfo_file``.
     sinfo_file:
         Path to a pre-captured ``sinfo`` output file.
+        Mutually exclusive with ``sinfo``.
     seed:
         RNG seed for the placer (different seeds → different placements).
     verbose:
         Forward the binary's ``--verbose`` flag (logs to stderr).
+    visualize:
+        Enable graphical visualisation (``--visualize`` flag).
     binary:
         Path to the compiled ``job_placer`` binary.
         Defaults to ``job_placer`` on ``$PATH``, then the directory that
@@ -201,11 +215,10 @@ class JobPlacer:
 
     def __init__(
         self,
+        system: str,
         topology: Optional[_AnyTopologySource] = None,
         *,
         # Shorthand topology args
-        system: Optional[str] = None,
-        topology_yaml: Optional[Union[str, Path]] = None,
         topology_file: Optional[Union[str, Path]] = None,
         topology_scontrol: bool = False,
         # Node filtering
@@ -213,19 +226,26 @@ class JobPlacer:
         all_nodes: bool = False,
         partition: Optional[str] = None,
         include_unavailable: bool = False,
-        # sinfo
+        # sinfo — at most one may be set
         sinfo: bool = False,
         sinfo_file: Optional[Union[str, Path]] = None,
         # Misc
         seed: Optional[int] = None,
         verbose: bool = False,
+        visualize: bool = False,
         binary: Optional[Union[str, Path]] = None,
     ):
+        if not system:
+            raise ValueError("system= is required (e.g. 'leonardo', 'jupiter', 'alps').")
+        self._system = system
+
         self._topology = self._resolve_topology(
-            topology, system, topology_yaml, topology_file, topology_scontrol
+            system, topology, topology_file, topology_scontrol
         )
 
-        # Node filtering
+        # Node filtering — mirror the CLI's conflicts_with = "nodelist"
+        if nodelist and all_nodes:
+            raise ValueError("nodelist and all_nodes are mutually exclusive.")
         if isinstance(nodelist, list):
             nodelist = ",".join(nodelist)
         self._nodelist = nodelist
@@ -233,7 +253,7 @@ class JobPlacer:
         self._partition = partition
         self._include_unavailable = include_unavailable
 
-        # sinfo
+        # sinfo — mirror the CLI's conflicts_with = "sinfo"
         if sinfo and sinfo_file:
             raise ValueError("sinfo and sinfo_file are mutually exclusive.")
         self._sinfo = sinfo
@@ -242,6 +262,7 @@ class JobPlacer:
         # Misc
         self._seed = seed
         self._verbose = verbose
+        self._visualize = visualize
         self._binary = self._resolve_binary(binary)
 
     # ------------------------------------------------------------------
@@ -255,7 +276,7 @@ class JobPlacer:
         seed: Optional[int] = None,
         timeout: float = 5.0,
         extra_args: Optional[List[str]] = None,
-        svg_out: Optional[Path] = None
+        svg_out: Optional[Union[str, Path]] = None,
     ) -> PlacementResult:
         """Run the placer for the given job requests.
 
@@ -266,8 +287,13 @@ class JobPlacer:
             will be passed through as-is to the JSON query).
         seed:
             Per-call seed override (takes precedence over the instance seed).
+        timeout:
+            Maximum time in seconds to wait for the binary.
         extra_args:
             Raw extra CLI arguments appended verbatim (escape hatch).
+        svg_out:
+            If given, pass ``--out-svg <path>`` to write an SVG visualisation.
+            Implies ``--visualize``.
 
         Returns
         -------
@@ -278,15 +304,19 @@ class JobPlacer:
             for name, req in jobs.items()
         }
         query_json = json.dumps(query)
-        
-        if svg_out:
-            if not extra_args:
-                extra_args = []
-            extra_args += ['--out-svg', str(svg_out.resolve())]
+        if self._verbose:
+            print(query_json)
 
-        cmd = self._build_command(seed_override=seed, extra_args=extra_args)
-        # print(' '.join(cmd))
-        
+        # svg_out implies visualize; wire it up via extra_args
+        _extra = list(extra_args or [])
+        if svg_out:
+            _extra += ["--out-svg", str(Path(svg_out).resolve())]
+
+        cmd = self._build_command(seed_override=seed, extra_args=_extra or None)
+
+        if self._verbose:
+            print(" ".join(cmd), file=sys.stderr)
+
         try:
             proc = subprocess.run(
                 cmd,
@@ -296,8 +326,8 @@ class JobPlacer:
                 timeout=timeout,
             )
 
-            if self._verbose and proc.stderr:
-                print(proc.stderr, end="", file=sys.stderr)
+            # if self._verbose and proc.stderr:
+            #     print(proc.stderr, end="", file=sys.stderr)
 
             if not proc.stdout.strip():
                 raise RuntimeError(
@@ -314,9 +344,9 @@ class JobPlacer:
                 ) from exc
 
             return PlacementResult._from_raw(raw, proc.returncode)
-        
+
         except subprocess.TimeoutExpired:
-            return PlacementResult(ok=False, reason=f'timeout {timeout}s')
+            return PlacementResult(ok=False, reason=f"timeout after {timeout}s")
         except Exception as exc:
             return PlacementResult(ok=False, reason=f"Error: {exc}")
 
@@ -331,8 +361,8 @@ class JobPlacer:
     ) -> List[str]:
         cmd: List[str] = [str(self._binary)]
 
-        # Topology
-        self._topology._apply(cmd)
+        # Topology flags (--system + --topology-file / --topology-scontrol)
+        self._topology._apply(cmd, self._system)
 
         # Node filtering
         if self._all_nodes:
@@ -345,7 +375,7 @@ class JobPlacer:
         if self._include_unavailable:
             cmd += ["--include-unavailable"]
 
-        # sinfo
+        # sinfo source (mutually exclusive flags)
         if self._sinfo:
             cmd += ["--sinfo"]
         elif self._sinfo_file:
@@ -356,58 +386,55 @@ class JobPlacer:
         if effective_seed is not None:
             cmd += ["--seed", str(effective_seed)]
 
-        if self._verbose:
-            cmd += ["--verbose"]
+        # if self._verbose:
+        #     cmd += ["--verbose"]
+
+        if self._visualize:
+            cmd += ["--visualize"]
 
         if extra_args:
             cmd += extra_args
 
-        # Query is always passed via stdin (no positional arg)
+        # Query is always passed via stdin (no positional arg needed)
         return cmd
 
     @staticmethod
     def _resolve_topology(
+        system: str,
         topology: Optional[_AnyTopologySource],
-        system: Optional[str],
-        topology_yaml: Optional[Union[str, Path]],
         topology_file: Optional[Union[str, Path]],
         topology_scontrol: bool,
     ) -> _AnyTopologySource:
         """Turn the mixed shorthand kwargs into a single topology source."""
-        sources_given = sum([
-            topology is not None,
-            topology_yaml is not None,
-            system is not None,
+        # Count how many sources were explicitly provided
+        shorthand_count = sum([
+            topology_file is not None,
+            topology_scontrol,
         ])
-        if sources_given == 0:
+
+        if topology is not None and shorthand_count > 0:
             raise ValueError(
-                "A topology source is required. Use topology=TopologySource.yaml_file(…), "
-                "or pass system=… / topology_yaml=… shorthand arguments."
+                "Specify either topology=TopologySource.…(…) or the shorthand "
+                "keyword arguments (topology_file / topology_scontrol), not both."
             )
-        if sources_given > 1:
-            raise ValueError(
-                "Only one topology source may be specified at a time."
-            )
+        if topology_file is not None and topology_scontrol:
+            raise ValueError("topology_file and topology_scontrol are mutually exclusive.")
 
         if topology is not None:
             return topology
 
-        if topology_yaml is not None:
-            return _YamlFile(Path(topology_yaml))
+        if topology_scontrol:
+            return _SystemScontrol(system=system)
+        if topology_file is not None:
+            path = Path(topology_file)
+            if path.suffix == ".toml":
+                return _TomlFile(path)
+            return _SystemFile(system=system, path=path)
 
-        # system= branch
-        if system is not None:
-            if topology_scontrol and topology_file:
-                raise ValueError("topology_file and topology_scontrol are mutually exclusive.")
-            if topology_scontrol:
-                return _SystemScontrol(system=system)
-            if topology_file:
-                return _SystemFile(system=system, path=Path(topology_file))
-            raise ValueError(
-                f"system={system!r} requires either topology_file=<PATH> or topology_scontrol=True."
-            )
-
-        raise ValueError("Could not resolve topology source.")  # unreachable
+        raise ValueError(
+            f"system={system!r} requires a topology source: pass topology_file=<PATH>, "
+            "topology_scontrol=True, or topology=TopologySource.<method>(…)."
+        )
 
     @staticmethod
     def _resolve_binary(binary: Optional[Union[str, Path]]) -> Path:
@@ -423,7 +450,7 @@ class JobPlacer:
             return Path(found)
 
         # 2. Next to this module
-        local = Path(__file__).parent / "job_placer_placement_classes"
+        local = Path(__file__).parent / "target" / "release" / "job_placer_placement_classes"
         if local.exists():
             return local
 

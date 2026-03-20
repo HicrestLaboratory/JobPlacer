@@ -1,4 +1,4 @@
-use super::reference::{ReferencePoint, NodePredicate};
+use super::reference::{NodePredicate, ReferencePoint};
 
 /// A constraint for selecting compute nodes
 #[derive(Debug, Clone)]
@@ -9,22 +9,22 @@ pub enum Constraint {
         distance: f32,
         reference: ReferencePoint,
     },
-    
+
     /// Select N nodes within max distance D from a reference point
     NodesWithinDistance {
         count: usize,
         max_distance: f32,
         reference: ReferencePoint,
     },
-    
+
     /// Multiple distance requirements from same reference point
     DistanceGroup {
         reference: ReferencePoint,
         groups: Vec<DistanceGroup>,
     },
-    
+
     /// Select N nodes at distance D that share the same parent (switch)
-    /// 
+    ///
     /// # Example
     /// ```ignore
     /// // Select 2 nodes at distance 4 that are under the same L1 switch
@@ -41,9 +41,9 @@ pub enum Constraint {
         reference: ReferencePoint,
         parent_level: usize, // 1 = direct parent, 2 = grandparent, etc.
     },
-    
+
     /// Multiple distance groups with shared parent constraint
-    /// 
+    ///
     /// # Example
     /// ```ignore
     /// // 2 nodes at distance 4 under same switch, 2 nodes at distance 2 under same switch
@@ -59,11 +59,9 @@ pub enum Constraint {
         reference: ReferencePoint,
         groups: Vec<DistanceGroupWithParent>,
     },
-    
+
     /// Filter nodes by predicate
-    NodeFilter {
-        predicate: NodePredicate,
-    },
+    NodeFilter { predicate: NodePredicate },
 }
 
 /// A group of nodes at a specific distance
@@ -71,7 +69,7 @@ pub enum Constraint {
 pub struct DistanceGroup {
     /// Number of nodes to select at this distance
     pub count: usize,
-    
+
     /// Graph distance (sum of edge weights along shortest path)
     pub distance: f32,
 }
@@ -81,10 +79,10 @@ pub struct DistanceGroup {
 pub struct DistanceGroupWithParent {
     /// Number of nodes to select at this distance
     pub count: usize,
-    
+
     /// Graph distance (sum of edge weights along shortest path)
     pub distance: f32,
-    
+
     /// Parent level: 1 = direct parent (L1 switch), 2 = grandparent (L2 switch), etc.
     pub parent_level: usize,
 }

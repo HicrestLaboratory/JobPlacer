@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fs, path::Path, process::Command};
 
-use crate::parsers::slurm::{NodeListParseError, expand_nodelist};
+use crate::parsers::slurm::{expand_nodelist, NodeListParseError};
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -28,18 +28,21 @@ impl NodeState {
         let clean = s.trim_end_matches(|c| c == '*' || c == '~' || c == '#' || c == '!');
         match clean {
             "alloc" | "allocated" => NodeState::Allocated,
-            "mix"   | "mixed"     => NodeState::Mixed,
-            "idle"                => NodeState::Idle,
-            "drng"  | "draining"  => NodeState::Draining,
-            "drain" | "drained"   => NodeState::Drained,
-            "down"                => NodeState::Down,
-            other                 => NodeState::Other(other.to_string()),
+            "mix" | "mixed" => NodeState::Mixed,
+            "idle" => NodeState::Idle,
+            "drng" | "draining" => NodeState::Draining,
+            "drain" | "drained" => NodeState::Drained,
+            "down" => NodeState::Down,
+            other => NodeState::Other(other.to_string()),
         }
     }
 
     /// Returns `true` for states that indicate the node is not usable for new jobs.
     pub fn is_unavailable(&self) -> bool {
-        matches!(self, NodeState::Draining | NodeState::Drained | NodeState::Down)
+        matches!(
+            self,
+            NodeState::Draining | NodeState::Drained | NodeState::Down
+        )
     }
 }
 
@@ -50,14 +53,29 @@ impl NodeState {
 /// Everything sinfo tells us about a single compute node.
 #[derive(Clone, Debug)]
 pub struct NodeInfo {
-    pub hostname:  String,
+    pub hostname: String,
     pub partition: String,
-    pub state:     NodeState,
+    pub state: NodeState,
 }
 
 // ---------------------------------------------------------------------------
 // Parsing
 // ---------------------------------------------------------------------------
+
+pub fn from_sinfo_command_raw() -> Result<String, NodeListParseError> {
+    let output = Command::new("sinfo")
+        .args(["-h", "-N", "-o", "%N %P %t"])
+        .output()
+        .map_err(|e| NodeListParseError::new(format!("failed to run sinfo: {e}")))?;
+
+    String::from_utf8(output.stdout)
+        .map_err(|_| NodeListParseError::new("sinfo output is not valid UTF-8"))
+}
+
+pub fn from_sinfo_file_raw<P: AsRef<Path>>(path: P) -> Result<String, NodeListParseError> {
+    fs::read_to_string(path)
+        .map_err(|e| NodeListParseError::new(format!("failed to read sinfo file: {e}")))
+}
 
 /// Run `sinfo -h -N -o "%N %P %t"` and parse the output.
 ///
@@ -65,22 +83,12 @@ pub struct NodeInfo {
 /// `-N`  one line per node
 /// `-o`  custom format: nodename  partition  state
 pub fn from_sinfo_command() -> Result<Vec<NodeInfo>, NodeListParseError> {
-    let output = Command::new("sinfo")
-        .args(["-h", "-N", "-o", "%N %P %t"])
-        .output()
-        .map_err(|e| NodeListParseError::new(format!("failed to run sinfo: {e}")))?;
-
-    let raw = String::from_utf8(output.stdout)
-        .map_err(|_| NodeListParseError::new("sinfo output is not valid UTF-8"))?;
-
-    parse_sinfo_output(&raw)
+    parse_sinfo_output(&from_sinfo_command_raw()?)
 }
 
 /// Parse sinfo output from a file (useful for testing / offline use).
 pub fn from_sinfo_file<P: AsRef<Path>>(path: P) -> Result<Vec<NodeInfo>, NodeListParseError> {
-    let raw = fs::read_to_string(path)
-        .map_err(|e| NodeListParseError::new(format!("failed to read sinfo file: {e}")))?;
-    parse_sinfo_output(&raw)
+    parse_sinfo_output(&from_sinfo_file_raw(path)?)
 }
 
 /// Parse the raw sinfo text.

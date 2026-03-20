@@ -1,15 +1,17 @@
+use log::info;
 use std::collections::HashMap;
 use std::fmt;
 use std::process::Command;
-use log::info;
 
 pub fn get_nodelist_from_env() -> Result<Vec<String>, String> {
     if let Ok(nodelist_env) = std::env::var("SLURM_JOB_NODELIST") {
         info!("Detected SLURM environment, expanding node list…");
         let output = Command::new("scontrol")
             .args(["show", "hostnames", &nodelist_env])
-            .output().map_err(|err| err.to_string())?;
-        let stdout = String::from_utf8(output.stdout).map_err(|_| String::from("Could not parse stdout to utf8"))?;
+            .output()
+            .map_err(|err| err.to_string())?;
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|_| String::from("Could not parse stdout to utf8"))?;
         let nodes: Vec<String> = stdout
             .lines()
             .map(|s| s.trim().to_string())
@@ -40,7 +42,6 @@ impl fmt::Display for NodeListParseError {
 }
 
 impl std::error::Error for NodeListParseError {}
-
 
 /// Expand SLURM-style node list expressions
 pub fn expand_nodelist(input: &str) -> Result<Vec<String>, NodeListParseError> {
@@ -100,10 +101,7 @@ fn expand_part(part: &str) -> Result<Vec<String>, NodeListParseError> {
         let end_str = &part[dash + 1..];
 
         if start_str.is_empty() || end_str.is_empty() {
-            return Err(NodeListParseError::new(format!(
-                "invalid range '{}'",
-                part
-            )));
+            return Err(NodeListParseError::new(format!("invalid range '{}'", part)));
         }
 
         let start: usize = start_str
@@ -152,9 +150,7 @@ fn split_preserving_brackets(s: &str) -> Result<Vec<String>, NodeListParseError>
             }
             ']' => {
                 if depth == 0 {
-                    return Err(NodeListParseError::new(
-                        "closing ']' without matching '['",
-                    ));
+                    return Err(NodeListParseError::new("closing ']' without matching '['"));
                 }
                 depth -= 1;
                 current.push(ch);
@@ -186,7 +182,7 @@ pub fn parse_line(line: &str) -> HashMap<String, String> {
     for part in line.split_whitespace() {
         if let Some(pos) = part.find('=') {
             let key = part[..pos].to_string();
-            let val = part[pos+1..].to_string();
+            let val = part[pos + 1..].to_string();
             map.insert(key, val);
         }
     }

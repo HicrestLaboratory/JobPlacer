@@ -2,12 +2,13 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use log::info;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::ir::entity::EntityKind;
-use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
+use crate::ir::EntityKind;
+use crate::ir::Id;
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -68,7 +69,6 @@ impl<'de> Deserialize<'de> for PlacementClass {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct JobRequest {
-    pub job_kind: String,
     pub nodes: usize,
     pub placement_class: PlacementClass,
 }
@@ -172,6 +172,20 @@ impl TopoView {
             })
             .unwrap_or_default()
     }
+
+    /// Count free nodes per L1 within a cell, for diagnostics.
+    fn free_per_l1_in_cell(&self, cell: &str, used: &HashSet<Id>) -> Vec<usize> {
+        self.cells
+            .get(cell)
+            .map(|racks| {
+                racks
+                    .values()
+                    .flat_map(|l1s| l1s.values())
+                    .map(|nodes| nodes.iter().filter(|id| !used.contains(*id)).count())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -193,15 +207,53 @@ impl<'a> Placer<'a> {
         }
     }
 
+    pub fn change_seed(&mut self, new_seed: u64) {
+        self.rng = SmallRng::seed_from_u64(new_seed);
+    }
+
     /// Attempt to place all jobs simultaneously with non-overlapping nodes.
     pub fn place(&mut self, jobs: &BTreeMap<String, JobRequest>) -> PlacementResult {
-        // Sort jobs by descending node count so larger jobs are placed first
-        // (greedy: harder constraints first reduces backtracking).
+        // Sort jobs so that the hardest-to-satisfy constraints are placed first.
+        // Primary key: constraint strictness (tightest first).
+        // Secondary key: descending node count (larger jobs within same class first).
+        //
+        // Strictness order (ascending value = stricter):
+        //   0  IntraL1              – must fit entirely under one L1 switch
+        //   1  IntraGroupSameL1(n)  – block-aligned, single cell, >=2 L1s
+        //   2  InterGroupSameL1(n)  – block-aligned, >=2 cells
+        //   3  IntraGroup           – any nodes within one cell, >=2 L1s
+        //   4  InterGroup           – any nodes across >=2 cells
+        let constraint_rank = |pc: &PlacementClass| match pc {
+            PlacementClass::IntraL1 => 0usize,
+            PlacementClass::IntraGroupSameL1(_) => 1,
+            PlacementClass::InterGroupSameL1(_) => 2,
+            PlacementClass::IntraGroup => 3,
+            PlacementClass::InterGroup => 4,
+        };
         let mut job_order: Vec<(&String, &JobRequest)> = jobs.iter().collect();
-        job_order.sort_by(|a, b| b.1.nodes.cmp(&a.1.nodes));
+        job_order.sort_by(|a, b| {
+            constraint_rank(&a.1.placement_class)
+                .cmp(&constraint_rank(&b.1.placement_class))
+                .then_with(|| b.1.nodes.cmp(&a.1.nodes))
+        });
 
         let mut used: HashSet<Id> = HashSet::new();
         let mut placements: BTreeMap<String, JobPlacement> = BTreeMap::new();
+
+        let total_requested: usize = jobs.values().map(|j| j.nodes).sum();
+        let total_available: usize = self
+            .ir
+            .entities
+            .iter()
+            .filter(|(_, e)| e.kind == EntityKind::Compute)
+            .count();
+
+        info!(
+            "Placing {} jobs requiring {} nodes total ({} available)",
+            jobs.len(),
+            total_requested,
+            total_available
+        );
 
         for (job_name, req) in &job_order {
             match self.place_one(req, &used) {
@@ -218,18 +270,159 @@ impl<'a> Placer<'a> {
                     );
                 }
                 None => {
+                    let debug = self.failure_debug(req, &used);
                     return PlacementResult::Infeasible {
                         reason: format!(
-                            "cannot place job '{}': need {} nodes with class {:?}, \
-                             not enough free nodes satisfy the constraint",
-                            job_name, req.nodes, req.placement_class
+                            "cannot place job '{}': need {} nodes with class {:?}. {}",
+                            job_name, req.nodes, req.placement_class, debug
                         ),
                     };
                 }
             }
         }
 
+        // Verify every requested node was placed.
+        assert_eq!(
+            total_requested,
+            placements.values().map(|p| p.nodes.len()).sum::<usize>(),
+            "placed node count mismatch: requested {total_requested}"
+        );
+
+        // Verify no node is shared between two jobs.
+        let mut seen: HashSet<&str> = HashSet::new();
+        for (job_name, placement) in &placements {
+            for node in &placement.nodes {
+                assert!(
+                    seen.insert(node.as_str()),
+                    "node '{node}' appears in job '{job_name}' but was already assigned to another job"
+                );
+            }
+        }
+
         PlacementResult::Ok { placements }
+    }
+
+    // -----------------------------------------------------------------------
+    // Failure diagnostics
+    // -----------------------------------------------------------------------
+
+    /// Build a human-readable explanation of *why* placement failed.
+    fn failure_debug(&self, req: &JobRequest, used: &HashSet<Id>) -> String {
+        let total_free: usize = self
+            .ir
+            .entities
+            .iter()
+            .filter(|(id, e)| e.kind == EntityKind::Compute && !used.contains(*id))
+            .count();
+
+        let mut lines: Vec<String> = vec![format!("Cluster-wide free nodes: {}.", total_free)];
+
+        // Per-cell summary
+        for (cell, _racks) in &self.view.cells {
+            let per_l1: Vec<usize> = self.view.free_per_l1_in_cell(cell, used);
+            let cell_free: usize = per_l1.iter().sum();
+            let l1s_with_any: usize = per_l1.iter().filter(|&&c| c > 0).count();
+
+            lines.push(format!(
+                "  Cell '{}': {} free nodes across {} L1s (per-L1 free: [{}]).",
+                cell,
+                cell_free,
+                l1s_with_any,
+                per_l1
+                    .iter()
+                    .filter(|&&c| c > 0)
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+
+            // For SameL1 variants, show how many block-sized slots exist
+            let block_size = match req.placement_class {
+                PlacementClass::IntraGroupSameL1(bs) | PlacementClass::InterGroupSameL1(bs) => {
+                    Some(bs)
+                }
+                _ => None,
+            };
+            if let Some(bs) = block_size {
+                let slots: usize = per_l1.iter().map(|&c| c / bs).sum();
+                let l1s_with_slot: usize = per_l1.iter().filter(|&&c| c >= bs).count();
+                lines.push(format!(
+                    "    Block-size {}: {} L1s with ≥1 slot, {} total slots available.",
+                    bs, l1s_with_slot, slots
+                ));
+            }
+        }
+
+        // Constraint-specific explanation
+        match &req.placement_class {
+            PlacementClass::IntraL1 => {
+                let best = self
+                    .view
+                    .cells
+                    .iter()
+                    .flat_map(|(cell, racks)| {
+                        racks.iter().flat_map(move |(rack, l1s)| {
+                            l1s.keys().map(move |l1| {
+                                self.view
+                                    .nodes_in_l1(cell, rack, l1)
+                                    .iter()
+                                    .filter(|id| !used.contains(*id))
+                                    .count()
+                            })
+                        })
+                    })
+                    .max()
+                    .unwrap_or(0);
+                lines.push(format!(
+                    "IntraL1 needs {} nodes under one L1; largest free L1 has {}.",
+                    req.nodes, best
+                ));
+            }
+            PlacementClass::IntraGroup => {
+                lines.push(format!(
+                    "IntraGroup needs {} nodes within one cell spanning ≥2 L1s.",
+                    req.nodes
+                ));
+            }
+            PlacementClass::InterGroup => {
+                let num_cells_with_free = self
+                    .view
+                    .cells
+                    .keys()
+                    .filter(|cell| {
+                        self.view
+                            .nodes_in_cell(cell)
+                            .iter()
+                            .any(|id| !used.contains(*id))
+                    })
+                    .count();
+                lines.push(format!(
+                    "InterGroup needs {} nodes spanning ≥2 cells; {} cells have free nodes.",
+                    req.nodes, num_cells_with_free
+                ));
+            }
+            PlacementClass::IntraGroupSameL1(bs) => {
+                lines.push(format!(
+                    "IntraGroupSameL1({}) needs {} nodes ({} blocks of {}) within one cell \
+                     across ≥2 L1s.",
+                    bs,
+                    req.nodes,
+                    req.nodes / bs,
+                    bs
+                ));
+            }
+            PlacementClass::InterGroupSameL1(bs) => {
+                lines.push(format!(
+                    "InterGroupSameL1({}) needs {} nodes ({} blocks of {}) spanning ≥2 cells.",
+                    bs,
+                    req.nodes,
+                    req.nodes / bs,
+                    bs
+                ));
+            }
+        }
+
+        lines.join(" ")
     }
 
     // -----------------------------------------------------------------------
@@ -377,10 +570,12 @@ impl<'a> Placer<'a> {
     /// IntraGroupSameL1(block_size):
     ///   - total = k * block_size nodes, all within one cell.
     ///   - Each block is assigned to exactly one L1 switch.
-    ///   - Blocks are spread across as many distinct L1 switches as possible
-    ///     (round-robin over L1s).
-    ///   - Hard requirement: ≥2 distinct L1 switches must be used
-    ///     (even if k == 1 this is enforced → None if impossible).
+    ///   - Hard requirement: ≥2 distinct L1 switches must be used.
+    ///
+    /// Strategy: build all eligible L1 pools, shuffle for seed-determinism,
+    /// then sort by descending capacity so we always prefer the richest L1s.
+    /// This maximises utilisation and avoids the round-robin stall that
+    /// occurs when a pool is exhausted mid-assignment.
     fn place_intra_group_same_l1(
         &mut self,
         total: usize,
@@ -440,37 +635,59 @@ impl<'a> Placer<'a> {
             return None;
         }
 
-        // Shuffle for randomness, then round-robin: assign one block per L1
-        // before going back for a second block on the same L1.
+        // Shuffle first for seed-based randomness, then sort descending by
+        // capacity so greedy allocation always drains the fullest L1 first.
+        // This avoids the round-robin stall where a pool runs dry mid-round.
         l1_pools.shuffle(&mut self.rng);
         for pool in &mut l1_pools {
             pool.shuffle(&mut self.rng);
         }
+        // Stable sort preserves the shuffle order among equal-capacity pools.
+        l1_pools.sort_by(|a, b| b.len().cmp(&a.len()));
 
+        // Greedy: drain blocks from the largest available L1, but enforce that
+        // at least 2 distinct L1s are used across the whole assignment.
+        //
+        // To guarantee ≥2 L1s we reserve one block for the second-largest L1
+        // when the largest L1 alone could supply all num_blocks.
         let mut result: Vec<Id> = Vec::with_capacity(total);
         let mut blocks_placed = 0usize;
 
-        while blocks_placed < num_blocks {
-            let mut placed_this_round = 0usize;
+        // Track how many blocks each pool contributes (by index).
+        let mut blocks_from: Vec<usize> = vec![0; l1_pools.len()];
 
-            for pool in &mut l1_pools {
-                if blocks_placed >= num_blocks {
+        // Pre-reserve: if the top pool has enough slots for everything, cap it
+        // so that at least one block must come from pool[1].
+        let top_cap = l1_pools[0].len() / block_size;
+        let max_from_top = if top_cap >= num_blocks {
+            num_blocks - 1 // leave room for ≥1 block on another L1
+        } else {
+            top_cap
+        };
+
+        // Greedy fill respecting per-pool cap and block_size alignment.
+        for (i, pool) in l1_pools.iter_mut().enumerate() {
+            if blocks_placed >= num_blocks {
+                break;
+            }
+            let cap = pool.len() / block_size;
+            let limit = if i == 0 { max_from_top } else { cap };
+            let take = limit.min(num_blocks - blocks_placed);
+            for _ in 0..take {
+                if pool.len() < block_size {
                     break;
                 }
-                if pool.len() >= block_size {
-                    let block: Vec<Id> = pool.drain(pool.len() - block_size..).collect();
-                    result.extend(block);
-                    blocks_placed += 1;
-                    placed_this_round += 1;
-                }
-            }
-
-            if placed_this_round == 0 {
-                break;
+                let drain_start = pool.len() - block_size;
+                let block: Vec<Id> = pool.drain(drain_start..).collect();
+                result.extend(block);
+                blocks_placed += 1;
+                blocks_from[i] += 1;
             }
         }
 
-        if result.len() == total {
+        // Verify: got the right number of nodes and used ≥2 pools.
+        let l1s_used = blocks_from.iter().filter(|&&b| b > 0).count();
+        if result.len() == total && l1s_used >= 2 {
             Some(result)
         } else {
             None
@@ -480,9 +697,11 @@ impl<'a> Placer<'a> {
     /// InterGroupSameL1(block_size):
     ///   - total = k * block_size nodes, spanning ≥2 cells.
     ///   - Each block is assigned to exactly one L1 switch.
-    ///   - Blocks are spread across as many L1 switches as possible
-    ///     (round-robin over all eligible L1s across all cells).
     ///   - Hard requirement: ≥2 distinct cells must be represented.
+    ///
+    /// Strategy: same shuffle-then-sort-descending approach as IntraGroupSameL1,
+    /// applied across all cells. We additionally reserve capacity to guarantee
+    /// the ≥2-cell constraint is never accidentally violated.
     fn place_inter_group_same_l1(
         &mut self,
         total: usize,
@@ -533,33 +752,56 @@ impl<'a> Placer<'a> {
             return None;
         }
 
+        // Shuffle for seed-based randomness, then sort descending by pool size.
+        // Stable sort preserves relative shuffle order for ties.
         tagged_pools.shuffle(&mut self.rng);
         for (_, pool) in &mut tagged_pools {
             pool.shuffle(&mut self.rng);
         }
+        tagged_pools.sort_by(|(_, a), (_, b)| b.len().cmp(&a.len()));
 
-        // Round-robin across pools (which already span cells) to maximise L1 spread.
+        // Greedy fill with a ≥2-cell guarantee:
+        //
+        // Find the dominant cell (the one whose pools have the most total slots).
+        // If it could absorb all blocks, cap how many we take from it so at
+        // least one block must land on a pool from a different cell.
+        let dominant_cell = tagged_pools[0].0.clone();
+        let dominant_slots: usize = tagged_pools
+            .iter()
+            .filter(|(c, _)| c == &dominant_cell)
+            .map(|(_, p)| p.len() / block_size)
+            .sum();
+        let max_from_dominant = if dominant_slots >= num_blocks {
+            num_blocks - 1
+        } else {
+            dominant_slots
+        };
+        let mut used_from_dominant = 0usize;
+
         let mut result: Vec<Id> = Vec::with_capacity(total);
         let mut blocks_placed = 0usize;
 
-        loop {
+        for (cell, pool) in &mut tagged_pools {
             if blocks_placed >= num_blocks {
                 break;
             }
-            let mut progress = false;
-            for (_, pool) in &mut tagged_pools {
-                if blocks_placed >= num_blocks {
+            let cap = pool.len() / block_size;
+            let cell_limit = if cell == &dominant_cell {
+                max_from_dominant.saturating_sub(used_from_dominant)
+            } else {
+                cap
+            };
+            let take = cell_limit.min(num_blocks - blocks_placed);
+            for _ in 0..take {
+                if pool.len() < block_size {
                     break;
                 }
-                if pool.len() >= block_size {
-                    let block: Vec<Id> = pool.drain(pool.len() - block_size..).collect();
-                    result.extend(block);
-                    blocks_placed += 1;
-                    progress = true;
+                let block: Vec<Id> = pool.drain(pool.len() - block_size..).collect();
+                result.extend(block);
+                blocks_placed += 1;
+                if cell == &dominant_cell {
+                    used_from_dominant += 1;
                 }
-            }
-            if !progress {
-                break;
             }
         }
 

@@ -5,15 +5,17 @@
 //! system-agnostic and can be called by any backend after it has produced a
 //! basic [`TopologyIR`].
 
-use crate::ir::entity::EntityKind;
-use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
-use crate::parsers::sinfo::{self, NodeInfo, NodeState, index_by_hostname};
+use crate::ir::EntityKind;
+use crate::ir::Id;
+use crate::parsers::sinfo::{self, index_by_hostname, NodeInfo, NodeState};
 use crate::parsers::slurm::NodeListParseError;
 
-pub mod leonardo;
+pub mod alps;
 pub mod jupiter;
+pub mod leonardo;
 
+#[derive(Clone)]
 pub enum SinfoSource {
     Command,
     File(std::path::PathBuf),
@@ -24,6 +26,14 @@ fn resolve_sinfo(source: Option<SinfoSource>) -> Result<Option<Vec<NodeInfo>>, N
         None => Ok(None),
         Some(SinfoSource::Command) => Ok(Some(sinfo::from_sinfo_command()?)),
         Some(SinfoSource::File(path)) => Ok(Some(sinfo::from_sinfo_file(path)?)),
+    }
+}
+
+fn resolve_sinfo_raw(source: Option<SinfoSource>) -> Result<Option<String>, NodeListParseError> {
+    match source {
+        None => Ok(None),
+        Some(SinfoSource::Command) => Ok(Some(sinfo::from_sinfo_command_raw()?)),
+        Some(SinfoSource::File(path)) => Ok(Some(sinfo::from_sinfo_file_raw(path)?)),
     }
 }
 

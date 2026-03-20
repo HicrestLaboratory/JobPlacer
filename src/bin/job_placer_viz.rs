@@ -2,7 +2,7 @@ use clap::Parser;
 use job_placer::{
     graph::display::{display_graph, DisplayOptions},
     init_logger,
-    ir::id::Id,
+    ir::Id,
     load_topology, resolve_nodes_filter, Cli,
 };
 use log::info;
@@ -32,7 +32,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ir = ir.filter_with_topology(&filter);
     }
 
-    display_graph(&ir, "topo.svg", None, &DisplayOptions::default());
+    display_graph(
+        &ir,
+        cli.out_svg
+            .unwrap_or(format!("topo_{}.svg", cli.system))
+            .as_str(),
+        None,
+        &DisplayOptions::default(),
+    );
 
     Ok(())
 }

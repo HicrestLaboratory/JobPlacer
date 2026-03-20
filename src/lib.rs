@@ -12,11 +12,19 @@ use std::path::PathBuf;
 
 use crate::{
     ir::topology_ir::TopologyIR,
-    parsers::slurm::{expand_nodelist, get_nodelist_from_env},
+    parsers::{
+        slurm::{expand_nodelist, get_nodelist_from_env},
+        toml::{self, TomlTopologyOptions},
+    },
     topology::{
-        NodeFilterOptions, SinfoSource, jupiter::{self, JupiterOptions}, leonardo::{self as leo, LeonardoOptions}
+        alps::get_groups_from_sinfo,
+        jupiter::{self, JupiterOptions},
+        leonardo::{self as leo, LeonardoOptions},
+        NodeFilterOptions, SinfoSource,
     },
 };
+
+const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter", "alps"];
 
 // ---------------------------------------------------------------------------
 // CLI definition
@@ -29,24 +37,24 @@ pub struct Cli {
     /// Path to the query JSON file.  If omitted, the query is read from stdin.
     pub query: Option<PathBuf>,
 
-    /// Explicit node list (comma- or newline-separated hostnames).
-    /// Required when not running inside a SLURM allocation.
+    /// Explicit node list (SLURM nodes format).
     #[arg(short = 'n', long, value_name = "HOSTNAMES")]
     pub nodelist: Option<String>,
 
     /// Consider all available nodes.
-    #[arg(short = 'a', long)]
+    #[arg(short = 'a', long, conflicts_with = "nodelist")]
     pub all_nodes: bool,
 
     /// Enable informational/debug output.
     #[arg(short = 'v', long)]
     pub verbose: bool,
 
-    /// How to load the system topology.
-    #[command(flatten)]
-    pub topology: TopologyArgs,
+    /// System name
+    /// Currently supported: leonardo, jupiter, alps FIXME use SUPPORTED_SYSTEMS
+    #[arg(short = 's', long, value_name = "SYSTEM", value_parser = ["leonardo", "jupiter", "alps"])]
+    pub system: String,
 
-    /// System-specific topology source (used together with --system).
+    /// System-specific topology source.
     #[command(flatten)]
     pub topo_source: TopoSource,
 
@@ -80,20 +88,6 @@ pub struct Cli {
 }
 
 // ---------------------------------------------------------------------------
-
-#[derive(Args, Debug)]
-#[group(required = true, multiple = false)]
-pub struct TopologyArgs {
-    /// Path to a YAML topology file (parsed with `manual::from_file`).
-    #[arg(short = 'f', long, value_name = "PATH", group = "topo")]
-    pub topology_yaml: Option<PathBuf>,
-
-    /// Use a named system together with --topology-system-file or
-    /// --topology-scontrol to specify the data source.
-    /// Currently supported: leonardo, jupiter
-    #[arg(short = 's', long, value_name = "SYSTEM", requires = "topo_source")]
-    pub system: Option<String>,
-}
 
 #[derive(Args, Debug)]
 #[group(id = "topo_source", multiple = false)]
@@ -138,11 +132,9 @@ pub fn init_logger(verbose: bool) {
 // Topology loading
 // ---------------------------------------------------------------------------
 
-const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter"];
-
 /// Load, enrich, and filter the topology IR according to the CLI flags.
 pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>> {
-    let topo = &cli.topology;
+    let system = &cli.system;
 
     // Build NodeFilterOptions from flags.
     let filter_opts = NodeFilterOptions {
@@ -153,57 +145,66 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
     let sinfo_source = resolve_sinfo_source(&cli.sinfo);
 
     // ---- Option A: plain YAML file ----------------------------------
-    if let Some(path) = &topo.topology_yaml {
-        info!("Loading topology from YAML: {}", path.display());
-        // YAML / manual parser is system-agnostic and doesn't use sinfo.
-        use crate::parsers::manual;
-        let ir = manual::from_file(path);
-        return Ok(ir);
+    if let Some(path) = &cli.topo_source.topology_file {
+        if path.extension().is_some_and(|ext| ext == "toml") {
+            info!("Loading topology from TOML: {}", path.display());
+            let ir = toml::from_file_with_opts(
+                path,
+                sinfo_source.clone(),
+                filter_opts,
+                TomlTopologyOptions::default(),
+            )?;
+            return Ok(match system.to_lowercase().as_str() {
+                "alps" => get_groups_from_sinfo(
+                    ir,
+                    sinfo_source.expect("ALPS requires SINFO to map Dragonfly groups!"),
+                )?,
+                _ => ir,
+            });
+        }
     }
 
     // ---- Option B / C: named system + source ------------------------
-    if let Some(system) = &topo.system {
-        let mut ir = if cli.topo_source.topology_scontrol {
-            info!("Loading {} topology via scontrol…", system.to_uppercase());
-            match system.to_lowercase().as_str() {
-                "leonardo" => leo::from_scontrol_with_opts(
-                    sinfo_source,
-                    filter_opts,
-                    LeonardoOptions::default(),
-                )?,
-                "jupiter" => jupiter::from_scontrol_with_opts(sinfo_source, filter_opts, JupiterOptions::default())?, // extend similarly when ready
-                other => unknown_system(other),
+    let mut ir = if cli.topo_source.topology_scontrol {
+        info!("Loading {} topology via scontrol…", system.to_uppercase());
+        match system.to_lowercase().as_str() {
+            "leonardo" => {
+                leo::from_scontrol_with_opts(sinfo_source, filter_opts, LeonardoOptions::default())?
             }
-        } else if let Some(path) = &cli.topo_source.topology_file {
-            info!(
-                "Loading {} topology from {}",
-                system.to_uppercase(),
-                path.display()
-            );
-            match system.to_lowercase().as_str() {
-                "leonardo" => leo::from_file_with_opts(
-                    path,
-                    sinfo_source,
-                    filter_opts,
-                    LeonardoOptions::default(),
-                )?,
-                "jupiter" => jupiter::from_file(path)?,
-                other => unknown_system(other),
-            }
-        } else {
-            eprintln!("error: required either --topology-file <PATH> or --topology-scontrol.");
-            std::process::exit(1);
-        };
-
-        // Partition filter (applied after sinfo enrichment).
-        if let Some(partition) = &cli.partition {
-            ir = filter_by_partition(ir, partition);
+            "jupiter" => jupiter::from_scontrol_with_opts(
+                sinfo_source,
+                filter_opts,
+                JupiterOptions::default(),
+            )?, // extend similarly when ready
+            other => unknown_system(other),
         }
+    } else if let Some(path) = &cli.topo_source.topology_file {
+        info!(
+            "Loading {} topology from {}",
+            system.to_uppercase(),
+            path.display()
+        );
+        match system.to_lowercase().as_str() {
+            "leonardo" => leo::from_file_with_opts(
+                path,
+                sinfo_source,
+                filter_opts,
+                LeonardoOptions::default(),
+            )?,
+            "jupiter" => jupiter::from_file(path)?,
+            other => unknown_system(other),
+        }
+    } else {
+        eprintln!("error: required either --topology-file <PATH> or --topology-scontrol.");
+        std::process::exit(1);
+    };
 
-        return Ok(ir);
+    // Partition filter (applied after sinfo enrichment).
+    if let Some(partition) = &cli.partition {
+        ir = filter_by_partition(ir, partition);
     }
 
-    unreachable!("clap's required group guarantees one topology flag is set");
+    return Ok(ir);
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +243,7 @@ fn resolve_sinfo_source(args: &SinfoArgs) -> Option<SinfoSource> {
 /// `partition`.  Switches are always kept as long as they have at least one
 /// qualifying descendant.
 fn filter_by_partition(ir: TopologyIR, partition: &str) -> TopologyIR {
-    use crate::ir::entity::EntityKind;
+    use crate::ir::EntityKind;
 
     // Collect IDs of compute nodes NOT in the requested partition.
     let to_remove: Vec<_> = ir
@@ -269,5 +270,5 @@ fn unknown_system(name: &str) -> ! {
         name,
         SUPPORTED_SYSTEMS.join(", ")
     );
-    std::process::exit(1);
+    std::process::exit(3);
 }

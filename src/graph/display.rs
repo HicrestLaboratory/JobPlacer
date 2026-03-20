@@ -22,9 +22,9 @@ use std::io::Write;
 
 use log::info;
 
-use crate::ir::entity::{Entity, EntityKind};
-use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
+use crate::ir::Id;
+use crate::ir::{Entity, EntityKind};
 
 pub type Allocations = HashMap<String, HashSet<String>>;
 
@@ -94,6 +94,7 @@ fn collect_cell_rack_l1(ir: &TopologyIR) -> BTreeMap<String, BTreeMap<String, Ve
             .meta
             .get("rack")
             .cloned()
+            .or_else(|| entity.meta.get("cabinet").cloned())
             .unwrap_or_else(|| "?".into());
         out.entry(cell)
             .or_default()
@@ -232,8 +233,6 @@ pub fn display_graph(
     allocations: Option<&Allocations>,
     opts: &DisplayOptions,
 ) {
-    info!("{ir}");
-
     let mut alloc: HashMap<String, (String, usize)> = HashMap::new();
     if let Some(a) = allocations {
         let mut jobs: Vec<&String> = a.keys().collect();
@@ -351,23 +350,23 @@ pub fn display_graph(
                 }
 
                 // Force vertical ordering using invisible edges
-if !compute.is_empty() {
-    writeln!(
-        f,
-        "        \"{}\" -> \"{}\" [style=invis weight=2 minlen=1];",
-        l1_id.0,
-        compute[0].0
-    ).unwrap();
+                if !compute.is_empty() {
+                    writeln!(
+                        f,
+                        "        \"{}\" -> \"{}\" [style=invis weight=2 minlen=1];",
+                        l1_id.0, compute[0].0
+                    )
+                    .unwrap();
 
-    for pair in compute.windows(2) {
-        writeln!(
-            f,
-            "        \"{}\" -> \"{}\" [style=invis weight=2 minlen=1];",
-            pair[0].0,
-            pair[1].0
-        ).unwrap();
-    }
-}
+                    for pair in compute.windows(2) {
+                        writeln!(
+                            f,
+                            "        \"{}\" -> \"{}\" [style=invis weight=2 minlen=1];",
+                            pair[0].0, pair[1].0
+                        )
+                        .unwrap();
+                    }
+                }
 
                 writeln!(f, "      }}").unwrap();
             }
@@ -428,7 +427,7 @@ if !compute.is_empty() {
                 writeln!(
                     f,
                     "    \"__legend_{i}\" [shape=box style=\"{style}\" fillcolor=\"{color}\" \
-                     label=\"{job}\" fontsize=8 width=1.4 height=0.28 fixedsize=true];",
+                     label=\"{job}\" fontsize=8 width=2.4 height=0.28 fixedsize=true];",
                 )
                 .unwrap();
 

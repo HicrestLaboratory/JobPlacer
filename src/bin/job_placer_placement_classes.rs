@@ -2,7 +2,7 @@ use clap::Parser;
 use job_placer::{
     graph::display::{display_graph, Allocations, DisplayOptions},
     init_logger,
-    ir::{entity::EntityKind, id::Id, topology_ir::TopologyIR},
+    ir::{topology_ir::TopologyIR, EntityKind, Id},
     load_topology, resolve_nodes_filter, Cli,
 };
 use log::info;
@@ -108,32 +108,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------------
     // Run placer
     // -----------------------------------------------------------------------
-    let seed = cli.seed.unwrap_or(42);
-    info!("Using seed: {seed}");
+    let mut seed = cli.seed.unwrap_or(42);
+    const ATTEMPTS: usize = 6;
+
+    let mut last_result: Option<PlacementResult> = None;
     let mut placer = Placer::new(&ir, seed);
-    let result = placer.place(&jobs);
 
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    for attempt in 0..ATTEMPTS {
+        info!("Attempt #{}, using seed: {seed}", attempt + 1);
+        let result = placer.place(&jobs);
 
-    if matches!(result, PlacementResult::Infeasible { .. }) {
-        std::process::exit(1);
-    }
+        match result {
+            PlacementResult::Ok { .. } => {
+                println!("{}", serde_json::to_string_pretty(&result)?);
 
-    if cli.visualize || cli.out_svg.is_some() {
-        if let Some(allocations) = placement_to_allocations(&result) {
-            display_graph(
-                &filter_ir_by_allocations(&ir, &allocations),
-                if let Some(f) = cli.out_svg {
-                    f
-                } else {
-                    String::from("topology_placement.svg")
+                if cli.visualize || cli.out_svg.is_some() {
+                    if let Some(allocations) = placement_to_allocations(&result) {
+                        display_graph(
+                            &filter_ir_by_allocations(&ir, &allocations),
+                            if let Some(f) = cli.out_svg {
+                                f
+                            } else {
+                                String::from("topology_placement.svg")
+                            }
+                            .as_str(),
+                            Some(&allocations),
+                            &DisplayOptions::default(),
+                        );
+                    }
                 }
-                .as_str(),
-                Some(&allocations),
-                &DisplayOptions::default(),
-            );
+
+                std::process::exit(0);
+            }
+            PlacementResult::Infeasible { ref reason } => {
+                info!("Attempt #{} failed: {reason}", attempt + 1);
+                last_result = Some(result);
+                // Each retry uses a different seed so the random shuffle
+                // explores a different region of the placement space.
+                seed = seed.wrapping_add(1);
+                placer.change_seed(seed);
+            }
         }
     }
 
-    Ok(())
+    // All attempts exhausted — print the last failure and exit with an error.
+    let failed = last_result.unwrap();
+    println!("{}", serde_json::to_string_pretty(&failed)?);
+    std::process::exit(1);
 }

@@ -1,0 +1,70 @@
+[meta]
+system          = "nanjing"
+w_node_switch   = 1.0
+w_switch_switch = 2.0
+
+# -- Switches -------------------------------------------------------
+# L1 switches belong to the same group; L2 switches are their uplinks.
+# Since the YAML expresses L2->L1 containment explicitly, those links
+# are declared here rather than left to synthesis.
+
+[[switch]]
+id    = "l1sw1"
+level = 1
+group = "group1"
+
+[[switch]]
+id    = "l1sw2"
+level = 1
+group = "group1"
+
+[[switch]]
+id    = "l2sw1"
+level = 2
+
+[[switch]]
+id    = "l2sw2"
+level = 2
+
+# -- Compute nodes --------------------------------------------------
+
+[[node]]
+id     = "cn1"
+switch = "l1sw1"
+
+[[node]]
+id     = "cn2"
+switch = "l1sw1"
+
+[[node]]
+id     = "cn3"
+switch = "l1sw1"
+
+[[node]]
+id     = "cn4"
+switch = "l1sw1"
+
+[[node]]
+id     = "cn5"
+switch = "l1sw2"
+
+[[node]]
+id     = "cn6"
+switch = "l1sw2"
+
+[[node]]
+id     = "cn7"
+switch = "l1sw2"
+
+[[node]]
+id     = "cn8"
+switch = "l1sw2"
+
+# -- Explicit inter-switch links ------------------------------------
+# L2 switches have no nodes, so they won't survive the empty-switch
+# pruning unless they appear here as link endpoints.
+# These four links reproduce the L2->L1 containment from the YAML.
+
+[[link]]
+a      = "l2sw1"
+b      = "l1s"

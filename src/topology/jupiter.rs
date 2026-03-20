@@ -26,9 +26,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::ir::entity::{Entity, EntityKind};
-use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
+use crate::ir::Id;
+use crate::ir::{Entity, EntityKind};
 use crate::parsers::run_scontrol_show_topology;
 use crate::parsers::sinfo::{self, NodeInfo};
 use crate::parsers::slurm::{expand_nodelist, parse_line, NodeListParseError};
@@ -45,8 +45,8 @@ pub const INTER_GROUP_LINKS_PER_PAIR: usize = 1;
 // ---------------------------------------------------------------------------
 // Link weights (normalised to 200 Gbps base unit, matching Jupiter's HCA)
 // ---------------------------------------------------------------------------
-const W_L1_NODE:    f32 = 1.0; // 200 Gbps  compute ↔ L1
-const W_L1_L2:      f32 = 2.0; // 400 Gbps  L1      ↔ L2  (intra-group)
+const W_L1_NODE: f32 = 1.0; // 200 Gbps  compute ↔ L1
+const W_L1_L2: f32 = 2.0; // 400 Gbps  L1      ↔ L2  (intra-group)
 const W_INTER_GROUP: f32 = 4.0; // 400 Gbps  L2      ↔ L2  (inter-group, higher weight to distinguish)
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,9 @@ pub struct JupiterOptions {
 
 impl Default for JupiterOptions {
     fn default() -> Self {
-        Self { intra_group_links: true }
+        Self {
+            intra_group_links: true,
+        }
     }
 }
 
@@ -71,11 +73,20 @@ impl Default for JupiterOptions {
 // ---------------------------------------------------------------------------
 
 pub fn from_scontrol() -> Result<TopologyIR, NodeListParseError> {
-    from_scontrol_with_opts(None, NodeFilterOptions::default(), JupiterOptions::default())
+    from_scontrol_with_opts(
+        None,
+        NodeFilterOptions::default(),
+        JupiterOptions::default(),
+    )
 }
 
 pub fn from_file<P: AsRef<Path>>(path: P) -> Result<TopologyIR, NodeListParseError> {
-    from_file_with_opts(path, None, NodeFilterOptions::default(), JupiterOptions::default())
+    from_file_with_opts(
+        path,
+        None,
+        NodeFilterOptions::default(),
+        JupiterOptions::default(),
+    )
 }
 
 pub fn from_scontrol_with_opts(
@@ -84,8 +95,11 @@ pub fn from_scontrol_with_opts(
     jupiter_opts: JupiterOptions,
 ) -> Result<TopologyIR, NodeListParseError> {
     let topology_raw = run_scontrol_show_topology();
-    let node_infos   = resolve_sinfo(sinfo_source)?;
-    JupiterParser { options: jupiter_opts }.build(&topology_raw, node_infos, &opts)
+    let node_infos = resolve_sinfo(sinfo_source)?;
+    JupiterParser {
+        options: jupiter_opts,
+    }
+    .build(&topology_raw, node_infos, &opts)
 }
 
 pub fn from_file_with_opts<P: AsRef<Path>>(
@@ -97,19 +111,20 @@ pub fn from_file_with_opts<P: AsRef<Path>>(
     let topology_raw = fs::read_to_string(path)
         .map_err(|e| NodeListParseError::new(format!("failed to read topology file: {e}")))?;
     let node_infos = resolve_sinfo(sinfo_source)?;
-    JupiterParser { options: jupiter_opts }.build(&topology_raw, node_infos, &opts)
+    JupiterParser {
+        options: jupiter_opts,
+    }
+    .build(&topology_raw, node_infos, &opts)
 }
 
 // ---------------------------------------------------------------------------
 // sinfo source descriptor
 // ---------------------------------------------------------------------------
 
-fn resolve_sinfo(
-    source: Option<SinfoSource>,
-) -> Result<Option<Vec<NodeInfo>>, NodeListParseError> {
+fn resolve_sinfo(source: Option<SinfoSource>) -> Result<Option<Vec<NodeInfo>>, NodeListParseError> {
     match source {
-        None                          => Ok(None),
-        Some(SinfoSource::Command)    => Ok(Some(sinfo::from_sinfo_command()?)),
+        None => Ok(None),
+        Some(SinfoSource::Command) => Ok(Some(sinfo::from_sinfo_command()?)),
         Some(SinfoSource::File(path)) => Ok(Some(sinfo::from_sinfo_file(path)?)),
     }
 }
@@ -124,7 +139,9 @@ pub struct JupiterParser {
 
 impl Default for JupiterParser {
     fn default() -> Self {
-        Self { options: JupiterOptions::default() }
+        Self {
+            options: JupiterOptions::default(),
+        }
     }
 }
 
@@ -141,29 +158,31 @@ impl TopologyParser for JupiterParser {
         // ---- Pass 1: register all real hardware switches -----------
         for line in &lines {
             let parts = parse_line(line);
-            let name = match parts.get("SwitchName") { Some(n) => n, None => continue };
-            if is_head_switch(name) { continue; }
+            let name = match parts.get("SwitchName") {
+                Some(n) => n,
+                None => continue,
+            };
+            if is_head_switch(name) {
+                continue;
+            }
 
             match parse_switch_name(name) {
                 Some(SwitchInfo::L1 { rack, index }) => {
                     ir.add_entity(Entity {
-                        id:   Id(name.clone()),
+                        id: Id(name.clone()),
                         kind: EntityKind::Switch { level: Some(0) },
-                        meta: HashMap::from([
-                            ("rack".into(),     rack),
-                            ("l1_index".into(), index),
-                        ]),
+                        meta: HashMap::from([("rack".into(), rack), ("l1_index".into(), index)]),
                     });
                 }
                 Some(SwitchInfo::L2 { anchor_rack, index }) => {
                     // Cell is derived later in pass 2 once we know all racks
                     // in this L2's Switches= list. Store anchor_rack for now.
                     ir.add_entity(Entity {
-                        id:   Id(name.clone()),
+                        id: Id(name.clone()),
                         kind: EntityKind::Switch { level: Some(1) },
                         meta: HashMap::from([
                             ("anchor_rack".into(), anchor_rack),
-                            ("l2_index".into(),    index),
+                            ("l2_index".into(), index),
                         ]),
                     });
                 }
@@ -178,11 +197,19 @@ impl TopologyParser for JupiterParser {
         // us exactly which racks belong to this group.
         for line in &lines {
             let parts = parse_line(line);
-            let name = match parts.get("SwitchName") { Some(n) => n, None => continue };
-            if !is_l2_switch(name) { continue; }
+            let name = match parts.get("SwitchName") {
+                Some(n) => n,
+                None => continue,
+            };
+            if !is_l2_switch(name) {
+                continue;
+            }
 
-            let switches_str = match parts.get("Switches") { Some(s) => s, None => continue };
-            let member_l1s   = expand_nodelist(switches_str)?;
+            let switches_str = match parts.get("Switches") {
+                Some(s) => s,
+                None => continue,
+            };
+            let member_l1s = expand_nodelist(switches_str)?;
 
             // Collect all unique rack IDs mentioned in the L1 list
             let mut racks_in_group: Vec<String> = member_l1s
@@ -217,9 +244,14 @@ impl TopologyParser for JupiterParser {
         // ---- Pass 3: compute nodes + L1 containment ----------------
         for line in &lines {
             let parts = parse_line(line);
-            let sw_name = match parts.get("SwitchName") { Some(n) => n.clone(), None => continue };
+            let sw_name = match parts.get("SwitchName") {
+                Some(n) => n.clone(),
+                None => continue,
+            };
 
-            if !is_l1_switch(&sw_name) { continue; }
+            if !is_l1_switch(&sw_name) {
+                continue;
+            }
             let sw_id = Id(sw_name.clone());
 
             if let Some(nodes_str) = parts.get("Nodes") {
@@ -230,11 +262,10 @@ impl TopologyParser for JupiterParser {
                     let node_id = Id(node_name.clone());
 
                     // Inherit rack from node name for quick lookup
-                    let rack = rack_from_node_name(&node_name)
-                        .unwrap_or_else(|| "?".into());
+                    let rack = rack_from_node_name(&node_name).unwrap_or_else(|| "?".into());
 
                     ir.add_entity(Entity {
-                        id:   node_id.clone(),
+                        id: node_id.clone(),
                         kind: EntityKind::Compute,
                         meta: HashMap::from([("rack".into(), rack)]),
                     });
@@ -245,13 +276,17 @@ impl TopologyParser for JupiterParser {
 
             // Intra-group link: L1 → L2 of the same group
             if self.options.intra_group_links {
-                let group = ir.entities.get(&sw_id)
+                let group = ir
+                    .entities
+                    .get(&sw_id)
                     .and_then(|e| e.meta.get("cell"))
                     .cloned();
 
                 if let Some(cell) = group {
                     // Find the L2 switch(es) for this group
-                    let l2s: Vec<Id> = ir.entities.values()
+                    let l2s: Vec<Id> = ir
+                        .entities
+                        .values()
                         .filter(|e| {
                             matches!(e.kind, EntityKind::Switch { level: Some(1) })
                                 && e.meta.get("cell").map(|s| s.as_str()) == Some(&cell)
@@ -301,7 +336,10 @@ impl TopologyParser for JupiterParser {
         for entity in ir.entities.values() {
             if let EntityKind::Switch { level: Some(1) } = entity.kind {
                 if let Some(cell) = entity.meta.get("cell") {
-                    group_to_l2.entry(cell.clone()).or_default().push(entity.id.clone());
+                    group_to_l2
+                        .entry(cell.clone())
+                        .or_default()
+                        .push(entity.id.clone());
                 }
             }
         }
@@ -341,14 +379,17 @@ fn parse_switch_name(name: &str) -> Option<SwitchInfo> {
     let rest = name.strip_prefix("jpbi-")?;
     let mut parts = rest.splitn(3, '-');
 
-    let rack  = parts.next()?.to_string();         // "001"
-    let level = parts.next()?;                     // "l1" or "l2"
-    let index = parts.next()?.to_string();         // "01"
+    let rack = parts.next()?.to_string(); // "001"
+    let level = parts.next()?; // "l1" or "l2"
+    let index = parts.next()?.to_string(); // "01"
 
     match level {
         "l1" => Some(SwitchInfo::L1 { rack, index }),
-        "l2" => Some(SwitchInfo::L2 { anchor_rack: rack, index }),
-        _    => None,
+        "l2" => Some(SwitchInfo::L2 {
+            anchor_rack: rack,
+            index,
+        }),
+        _ => None,
     }
 }
 
@@ -380,15 +421,21 @@ fn merge_continuation_lines(raw: &str) -> Vec<String> {
     let mut current = String::new();
     for line in raw.lines() {
         let t = line.trim();
-        if t.is_empty() { continue; }
+        if t.is_empty() {
+            continue;
+        }
         if t.starts_with("SwitchName=") {
-            if !current.is_empty() { lines.push(current.clone()); }
+            if !current.is_empty() {
+                lines.push(current.clone());
+            }
             current = t.to_string();
         } else {
             current.push(' ');
             current.push_str(t);
         }
     }
-    if !current.is_empty() { lines.push(current); }
+    if !current.is_empty() {
+        lines.push(current);
+    }
     lines
 }

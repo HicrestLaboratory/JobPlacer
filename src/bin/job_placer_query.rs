@@ -5,7 +5,7 @@ use clap::Parser;
 use job_placer::{init_logger, load_topology, resolve_nodes_filter, Cli};
 use log::info;
 
-use job_placer::ir::id::Id;
+use job_placer::ir::Id;
 use job_placer::query::TopologyQuery;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -29,9 +29,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use crate::ir::entity::{Entity, EntityKind};
-use crate::ir::id::Id;
 use crate::ir::topology_ir::TopologyIR;
+use crate::ir::Id;
+use crate::ir::{Entity, EntityKind};
 use crate::parsers::run_scontrol_show_topology;
 use crate::parsers::sinfo::NodeInfo;
 use crate::parsers::slurm::{expand_nodelist, parse_line, NodeListParseError};
