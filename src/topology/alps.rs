@@ -2,24 +2,23 @@ use log::warn;
 
 use crate::{
     ir::{
-        topology_ir::TopologyIR,
-        Id, {Entity, EntityKind},
+        Entity, EntityKind, Id, topology_ir::TopologyIR
     },
-    parsers::slurm::{expand_nodelist, parse_line, NodeListParseError},
-    topology::{resolve_sinfo_raw, SinfoSource},
+    parsers::slurm::{NodeListParseError, expand_nodelist, parse_line},
+    topology::{TopoSource, resolve_topo_raw},
 };
 use std::collections::{HashMap, HashSet};
 
 /// One parsed entry from a `scontrol show topology` line, Level=0 only.
 #[derive(Debug)]
-struct SinfoGroup {
+struct AlpsGroup {
     name: String,           // e.g. "group17"
     nodes: HashSet<String>, // fully-expanded node names
 }
 
 /// Parse the raw sinfo text and return only Level=0 switch entries.
 /// Level=1 ("global") and any malformed lines are silently skipped.
-fn parse_sinfo_groups(raw: &str) -> Result<Vec<SinfoGroup>, NodeListParseError> {
+fn parse_groups(raw: &str) -> Result<Vec<AlpsGroup>, NodeListParseError> {
     let mut groups = Vec::new();
 
     for line in raw.lines() {
@@ -51,7 +50,7 @@ fn parse_sinfo_groups(raw: &str) -> Result<Vec<SinfoGroup>, NodeListParseError> 
         };
 
         let nodes: HashSet<String> = expand_nodelist(&nodes_raw)?.into_iter().collect();
-        groups.push(SinfoGroup { name, nodes });
+        groups.push(AlpsGroup { name, nodes });
     }
 
     Ok(groups)
@@ -80,7 +79,7 @@ fn compute_children_of_switch<'a>(switch_id: &Id, ir: &'a TopologyIR) -> HashSet
 /// Match each Level=0 switch entity to the sinfo group whose node set has the
 /// largest overlap with the switch's compute children.  Returns a map from
 /// switch Id → group name.  Switches with zero overlap are not included.
-fn match_switches_to_groups<'a>(ir: &TopologyIR, groups: &'a [SinfoGroup]) -> HashMap<Id, &'a str> {
+fn match_switches_to_groups<'a>(ir: &TopologyIR, groups: &'a [AlpsGroup]) -> HashMap<Id, &'a str> {
     let mut result = HashMap::new();
 
     for entity in ir.entities.values() {
@@ -111,17 +110,17 @@ fn match_switches_to_groups<'a>(ir: &TopologyIR, groups: &'a [SinfoGroup]) -> Ha
     result
 }
 
-pub fn get_groups_from_sinfo(
+pub fn get_groups_from_topo(
     ir: TopologyIR,
-    sinfo_source: SinfoSource,
+    topo_source: TopoSource,
 ) -> Result<TopologyIR, NodeListParseError> {
     // ------------------------------------------------------------------ //
-    // 1. Obtain and parse the raw sinfo text.
+    // 1. Obtain and parse the raw topo text.
     // ------------------------------------------------------------------ //
-    let raw = resolve_sinfo_raw(Some(sinfo_source))?
-        .ok_or_else(|| NodeListParseError::new("sinfo source returned no data"))?;
+    let raw = resolve_topo_raw(Some(topo_source))?
+        .ok_or_else(|| NodeListParseError::new("topo source returned no data"))?;
 
-    let groups = parse_sinfo_groups(&raw)?;
+    let groups = parse_groups(&raw)?;
 
     // ------------------------------------------------------------------ //
     // 2. Match every Level=0 switch → sinfo group (by node-set overlap).

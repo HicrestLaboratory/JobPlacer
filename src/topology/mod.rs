@@ -8,12 +8,21 @@
 use crate::ir::topology_ir::TopologyIR;
 use crate::ir::EntityKind;
 use crate::ir::Id;
+use crate::parsers::run_scontrol_show_topology;
 use crate::parsers::sinfo::{self, index_by_hostname, NodeInfo, NodeState};
 use crate::parsers::slurm::NodeListParseError;
+use crate::parsers::topology_from_file_raw;
 
 pub mod alps;
 pub mod jupiter;
 pub mod leonardo;
+
+#[derive(Clone)]
+pub enum TopoSource {
+    Command,
+    /// The first path is to `scontrol show topology` dump, the second to a TOML file
+    Files(Option<std::path::PathBuf>, Option<std::path::PathBuf>),
+}
 
 #[derive(Clone)]
 pub enum SinfoSource {
@@ -29,11 +38,22 @@ fn resolve_sinfo(source: Option<SinfoSource>) -> Result<Option<Vec<NodeInfo>>, N
     }
 }
 
-fn resolve_sinfo_raw(source: Option<SinfoSource>) -> Result<Option<String>, NodeListParseError> {
+fn _resolve_sinfo_raw(source: Option<SinfoSource>) -> Result<Option<String>, NodeListParseError> {
     match source {
         None => Ok(None),
         Some(SinfoSource::Command) => Ok(Some(sinfo::from_sinfo_command_raw()?)),
         Some(SinfoSource::File(path)) => Ok(Some(sinfo::from_sinfo_file_raw(path)?)),
+    }
+}
+
+fn resolve_topo_raw(source: Option<TopoSource>) -> Result<Option<String>, NodeListParseError> {
+    match source {
+        None => Ok(None),
+        Some(TopoSource::Command) => Ok(Some(run_scontrol_show_topology())),
+        Some(TopoSource::Files(path, _)) => match path {
+            None => Ok(None),
+            Some(f) => Ok(Some(topology_from_file_raw(f)?)),
+        }
     }
 }
 

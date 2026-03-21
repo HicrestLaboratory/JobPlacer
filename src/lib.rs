@@ -17,10 +17,10 @@ use crate::{
         toml::{self, TomlTopologyOptions},
     },
     topology::{
-        alps::get_groups_from_sinfo,
+        alps::get_groups_from_topo,
         jupiter::{self, JupiterOptions},
         leonardo::{self as leo, LeonardoOptions},
-        NodeFilterOptions, SinfoSource,
+        NodeFilterOptions, SinfoSource, TopoSource,
     },
 };
 
@@ -56,11 +56,11 @@ pub struct Cli {
 
     /// System-specific topology source.
     #[command(flatten)]
-    pub topo_source: TopoSource,
+    pub topo_source: TopoArgs,
 
-    /// sinfo data source for partition / state enrichment.
-    #[command(flatten)]
-    pub sinfo: SinfoArgs,
+    /// Read `sinfo` output from a file instead of running the command.
+    #[arg(long, value_name = "PATH")]
+    pub sinfo_file: Option<PathBuf>,
 
     /// Keep only nodes belonging to this partition (e.g. boost_usr_prod).
     /// If omitted, nodes from all partitions are kept.
@@ -90,29 +90,14 @@ pub struct Cli {
 // ---------------------------------------------------------------------------
 
 #[derive(Args, Debug)]
-#[group(id = "topo_source", multiple = false)]
-pub struct TopoSource {
+#[group(id = "topo_args", multiple = true)]
+pub struct TopoArgs {
     /// Path to the system-specific topology file.
     #[arg(short = 'F', long, value_name = "PATH")]
     pub topology_file: Option<PathBuf>,
 
-    /// Discover topology via `scontrol` instead of a file.
-    #[arg(short = 'S', long)]
-    pub topology_scontrol: bool,
-}
-
-/// Where to get `sinfo` partition / state data.
-/// At most one of these may be set.
-#[derive(Args, Debug)]
-#[group(id = "sinfo_source", multiple = false)]
-pub struct SinfoArgs {
-    /// Run `sinfo` live to get partition and node-state information.
-    #[arg(long)]
-    pub sinfo: bool,
-
-    /// Read `sinfo` output from a file instead of running the command.
-    #[arg(long, value_name = "PATH", conflicts_with = "sinfo")]
-    pub sinfo_file: Option<PathBuf>,
+    #[arg(short = 'f', long, value_name = "PATH")]
+    pub topology_toml_file: Option<PathBuf>,
 }
 
 // ---------------------------------------------------------------------------
@@ -142,69 +127,96 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
     };
 
     // Resolve sinfo source (None means "no enrichment").
-    let sinfo_source = resolve_sinfo_source(&cli.sinfo);
+    let sinfo_source = resolve_sinfo_source(&cli);
+    let topo_source = resolve_topo_source(&cli.topo_source);
 
-    // ---- Option A: plain YAML file ----------------------------------
-    if let Some(path) = &cli.topo_source.topology_file {
-        if path.extension().is_some_and(|ext| ext == "toml") {
-            info!("Loading topology from TOML: {}", path.display());
-            let ir = toml::from_file_with_opts(
-                path,
-                sinfo_source.clone(),
-                filter_opts,
-                TomlTopologyOptions::default(),
-            )?;
-            return Ok(match system.to_lowercase().as_str() {
-                "alps" => get_groups_from_sinfo(
-                    ir,
-                    sinfo_source.expect("ALPS requires SINFO to map Dragonfly groups!"),
-                )?,
-                _ => ir,
-            });
-        }
-    }
-
-    // ---- Option B / C: named system + source ------------------------
-    let mut ir = if cli.topo_source.topology_scontrol {
-        info!("Loading {} topology via scontrol…", system.to_uppercase());
-        match system.to_lowercase().as_str() {
-            "leonardo" => {
-                leo::from_scontrol_with_opts(sinfo_source, filter_opts, LeonardoOptions::default())?
+    // Handle ALPS separately — it only supports TOML files.
+    let mut ir = if cli.system == "alps" {
+        match &topo_source {
+            TopoSource::Command => {
+                eprintln!("error: System ALPS requires a TOML file (you can find it in systems/).");
+                std::process::exit(1);
             }
-            "jupiter" => jupiter::from_scontrol_with_opts(
-                sinfo_source,
-                filter_opts,
-                JupiterOptions::default(),
-            )?, // extend similarly when ready
-            other => unknown_system(other),
-        }
-    } else if let Some(path) = &cli.topo_source.topology_file {
-        info!(
-            "Loading {} topology from {}",
-            system.to_uppercase(),
-            path.display()
-        );
-        match system.to_lowercase().as_str() {
-            "leonardo" => leo::from_file_with_opts(
-                path,
-                sinfo_source,
-                filter_opts,
-                LeonardoOptions::default(),
-            )?,
-            "jupiter" => jupiter::from_file(path)?,
-            other => unknown_system(other),
+            TopoSource::Files(_f, t) => {
+                if let Some(toml) = t {
+                    info!("Loading topology from TOML: {}", toml.display());
+                    let ir = toml::from_file_with_opts(
+                        toml,
+                        Some(sinfo_source),
+                        filter_opts,
+                        TomlTopologyOptions::default(),
+                    )?;
+                    match system.to_lowercase().as_str() {
+                        "alps" => get_groups_from_topo(ir, topo_source)?,
+                        _ => ir,
+                    }
+                } else {
+                    eprintln!(
+                        "error: System ALPS requires a TOML file (you can find it in systems/)."
+                    );
+                    std::process::exit(1);
+                }
+            }
         }
     } else {
-        eprintln!("error: required either --topology-file <PATH> or --topology-scontrol.");
-        std::process::exit(1);
+        match topo_source {
+            TopoSource::Command => {
+                info!(
+                    "Loading {} topology via `scontrol show topology`…",
+                    system.to_uppercase()
+                );
+                match system.to_lowercase().as_str() {
+                    "leonardo" => leo::from_scontrol_with_opts(
+                        Some(sinfo_source),
+                        filter_opts,
+                        LeonardoOptions::default(),
+                    )?,
+                    "jupiter" => jupiter::from_scontrol_with_opts(
+                        Some(sinfo_source),
+                        filter_opts,
+                        JupiterOptions::default(),
+                    )?,
+                    other => unknown_system(other),
+                }
+            }
+            TopoSource::Files(_f, t) => {
+                if let Some(file) = &cli.topo_source.topology_file {
+                    info!(
+                        "Loading {} topology from {}",
+                        system.to_uppercase(),
+                        file.display()
+                    );
+                    match system.to_lowercase().as_str() {
+                        "leonardo" => leo::from_file_with_opts(
+                            file,
+                            Some(sinfo_source),
+                            filter_opts,
+                            LeonardoOptions::default(),
+                        )?,
+                        "jupiter" => jupiter::from_file_with_opts(
+                            file,
+                            Some(sinfo_source),
+                            filter_opts,
+                            JupiterOptions::default(),
+                        )?,
+                        other => unknown_system(other),
+                    }
+                } else if let Some(toml) = t {
+                    parsers::toml::from_file(toml)? // fix 2: added `?`
+                } else {
+                    return Err("error: should not happen.".into()); // fix 3: `.into()` for Box<dyn Error>
+                }
+            }
+        }
     };
 
     // Partition filter (applied after sinfo enrichment).
     if let Some(partition) = &cli.partition {
+        info!("Filtering by partition: {}", partition);
         ir = filter_by_partition(ir, partition);
     }
 
-    return Ok(ir);
+    Ok(ir) // fix 5: idiomatic bare Ok(...)
 }
 
 // ---------------------------------------------------------------------------
@@ -231,11 +243,53 @@ pub fn resolve_nodes_filter(cli: &Cli) -> Result<Vec<String>, Box<dyn std::error
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-fn resolve_sinfo_source(args: &SinfoArgs) -> Option<SinfoSource> {
-    if args.sinfo {
-        Some(SinfoSource::Command)
+fn resolve_sinfo_source(args: &Cli) -> SinfoSource {
+    if let Some(f) = args.sinfo_file.clone() {
+        if !f.exists() {
+            eprintln!(
+                "error: Sinfo file '{}' does not exist!",
+                f.as_path().display()
+            );
+            std::process::exit(4);
+        }
+        SinfoSource::File(f)
     } else {
-        args.sinfo_file.clone().map(SinfoSource::File)
+        SinfoSource::Command
+    }
+}
+
+fn resolve_topo_source(args: &TopoArgs) -> TopoSource {
+    if let Some(f) = args.topology_file.clone() {
+        if !f.exists() {
+            eprintln!(
+                "error: Topology file '{}' does not exist!",
+                f.as_path().display()
+            );
+            std::process::exit(5);
+        }
+        if let Some(toml) = args.topology_toml_file.clone() {
+            if !toml.exists() {
+                eprintln!(
+                    "error: Topology TOML file '{}' does not exist!",
+                    toml.as_path().display()
+                );
+                std::process::exit(6);
+            }
+            return TopoSource::Files(Some(f), Some(toml));
+        } else {
+            return TopoSource::Files(Some(f), None);
+        }
+    } else if let Some(toml) = args.topology_toml_file.clone() {
+        if !toml.exists() {
+            eprintln!(
+                "error: Topology TOML file '{}' does not exist!",
+                toml.as_path().display()
+            );
+            std::process::exit(7);
+        }
+        return TopoSource::Files(None, Some(toml));
+    } else {
+        return TopoSource::Command;
     }
 }
 

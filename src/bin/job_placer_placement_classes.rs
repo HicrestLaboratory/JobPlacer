@@ -85,6 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|n| Id::from(n.as_str()))
             .collect();
         ir = ir.filter_with_topology(&filter);
+    } else {
+        info!("You forces using ALL nodes");
     }
 
     // -----------------------------------------------------------------------
