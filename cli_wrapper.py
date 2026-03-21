@@ -14,6 +14,13 @@ Typical usage
     # TOML file (system-agnostic)
     placer = JobPlacer(system="alps", topology_toml_file="/path/to/topo.toml")
 
+    # Both files simultaneously
+    placer = JobPlacer(
+        system="alps",
+        topology_file="/path/to/topo.xml",
+        topology_toml_file="/path/to/topo.toml",
+    )
+
     result = placer.place({
         "train_a": JobRequest(num_nodes=4),
         "train_b": JobRequest(num_nodes=8, placement_class="intra-l1"),
@@ -43,7 +50,12 @@ from typing import Dict, List, Optional, Union
 
 @dataclass
 class JobRequest:
-    """Represents a single job's placement requirements."""
+    """Represents a single job's placement requirements.
+
+    The fields are serialised as-is into the JSON query consumed by the
+    job_placer binary, so they must match whatever schema that binary expects.
+    Add or remove fields here if the Rust-side schema changes.
+    """
     num_nodes: int
     placement_class: Optional[str] = None
     extra: Dict = field(default_factory=dict)
@@ -83,6 +95,7 @@ class PlacementResult:
         reason: Optional[str] = None
 
         if ok:
+            # Expected shape: {"status": "Ok", "placements": {"job": {"nodes": [...]}}}
             for job_name, placement in raw.get("placements", {}).items():
                 placements[job_name] = placement.get("nodes", [])
         else:
@@ -99,14 +112,45 @@ class TopologySource:
     """Namespace for topology source factory methods — mirrors the CLI flags."""
 
     @staticmethod
-    def toml_file(path: Union[str, Path]) -> "_TomlFile":
-        """Load topology from a TOML file via ``--topology-toml-file``."""
-        return _TomlFile(Path(path))
+    def toml_file(path: Union[str, Path]) -> "_BothFiles":
+        """Load topology from a TOML file via ``--topology-toml-file``.
+
+        Parameters
+        ----------
+        path:
+            Path to the ``.toml`` topology file.
+        """
+        return _BothFiles(topology_file=None, topology_toml_file=Path(path))
 
     @staticmethod
-    def system_file(path: Union[str, Path]) -> "_SystemFile":
-        """Load topology from a system-specific file via ``--topology-file``."""
-        return _SystemFile(path=Path(path))
+    def system_file(path: Union[str, Path]) -> "_BothFiles":
+        """Load topology from a system-specific file via ``--topology-file``.
+
+        Parameters
+        ----------
+        path:
+            Path to the system-specific topology file.
+        """
+        return _BothFiles(topology_file=Path(path), topology_toml_file=None)
+
+    @staticmethod
+    def both_files(
+        topology_file: Union[str, Path],
+        topology_toml_file: Union[str, Path],
+    ) -> "_BothFiles":
+        """Pass both ``--topology-file`` and ``--topology-toml-file`` simultaneously.
+
+        Parameters
+        ----------
+        topology_file:
+            Path to the system-specific topology file.
+        topology_toml_file:
+            Path to the ``.toml`` topology file.
+        """
+        return _BothFiles(
+            topology_file=Path(topology_file),
+            topology_toml_file=Path(topology_toml_file),
+        )
 
     @staticmethod
     def scontrol() -> "_SystemScontrol":
@@ -115,21 +159,20 @@ class TopologySource:
 
 
 @dataclass
-class _TomlFile:
-    """TOML topology file — passed as ``--topology-toml-file <path>``."""
-    path: Path
+class _BothFiles:
+    """Carries ``--topology-file`` and/or ``--topology-toml-file``.
+
+    Either field may be ``None`` when only one file flag is needed.
+    """
+    topology_file: Optional[Path]       # → --topology-file
+    topology_toml_file: Optional[Path]  # → --topology-toml-file
 
     def _apply(self, cmd: List[str], system: str) -> None:
-        cmd += ["--system", system, "--topology-toml-file", str(self.path)]
-
-
-@dataclass
-class _SystemFile:
-    """System-specific topology file — passed as ``--topology-file <path>``."""
-    path: Path
-
-    def _apply(self, cmd: List[str], system: str) -> None:
-        cmd += ["--system", system, "--topology-file", str(self.path)]
+        cmd += ["--system", system]
+        if self.topology_file is not None:
+            cmd += ["--topology-file", str(self.topology_file)]
+        if self.topology_toml_file is not None:
+            cmd += ["--topology-toml-file", str(self.topology_toml_file)]
 
 
 @dataclass
@@ -142,7 +185,7 @@ class _SystemScontrol:
         cmd += ["--system", system]
 
 
-_AnyTopologySource = Union[_TomlFile, _SystemFile, _SystemScontrol]
+_AnyTopologySource = Union[_BothFiles, _SystemScontrol]
 
 
 # ---------------------------------------------------------------------------
@@ -161,34 +204,35 @@ class JobPlacer:
         methods.  You may also use the shorthand keyword arguments below.
     topology_file:
         Shorthand: path to a system-specific topology file
-        (``--topology-file``).  Mutually exclusive with ``topology_toml_file``.
+        (``--topology-file``).  May be combined with ``topology_toml_file``.
     topology_toml_file:
         Shorthand: path to a TOML topology file (``--topology-toml-file``).
-        Mutually exclusive with ``topology_file``.
+        May be combined with ``topology_file``.
     nodelist:
         Restrict placement to these hostnames (comma-separated string or list).
         Mutually exclusive with ``all_nodes``.
     all_nodes:
         Consider all available nodes.  Mutually exclusive with ``nodelist``.
     partition:
-        Keep only nodes belonging to this partition.
+        Keep only nodes belonging to this partition (e.g. ``"boost_usr_prod"``).
     include_unavailable:
-        Include draining / drained / down nodes.
+        Include draining / drained / down nodes instead of filtering them out.
     sinfo_file:
         Path to a pre-captured ``sinfo`` output file (``--sinfo-file``).
         When omitted, sinfo runs live automatically.
     seed:
-        RNG seed for the placer.
+        RNG seed for the placer (different seeds → different placements).
     verbose:
-        Forward the binary's ``--verbose`` flag.
+        Forward the binary's ``--verbose`` flag (logs to stderr).
     visualize:
         Enable graphical visualisation (``--visualize`` flag).
     out_svg:
         Write an SVG visualisation to this path (``--out-svg``).
         Implies ``visualize=True``.
     binary:
-        Path to the compiled binary.  Defaults to ``job_placer_placement_classes``
-        on ``$PATH``, then ``<module_dir>/target/release/``.
+        Path to the compiled ``job_placer_placement_classes`` binary.
+        Defaults to ``job_placer_placement_classes`` on ``$PATH``, then the
+        ``target/release/`` directory next to this module.
     """
 
     def __init__(
@@ -221,6 +265,7 @@ class JobPlacer:
             system, topology, topology_file, topology_toml_file
         )
 
+        # Node filtering — mirror the CLI's conflicts_with = "nodelist"
         if nodelist and all_nodes:
             raise ValueError("nodelist and all_nodes are mutually exclusive.")
         if isinstance(nodelist, list):
@@ -255,7 +300,8 @@ class JobPlacer:
         Parameters
         ----------
         jobs:
-            Mapping of job-name → :class:`JobRequest` (or a plain dict).
+            Mapping of job-name → :class:`JobRequest` (or a plain dict that
+            will be passed through as-is to the JSON query).
         seed:
             Per-call seed override (takes precedence over the instance seed).
         timeout:
@@ -321,7 +367,7 @@ class JobPlacer:
     ) -> List[str]:
         cmd: List[str] = [str(self._binary)]
 
-        # Topology flags (--system + optional file flag)
+        # Topology flags (--system + optional file flags)
         self._topology._apply(cmd, self._system)
 
         # Node filtering
@@ -356,6 +402,7 @@ class JobPlacer:
         if extra_args:
             cmd += extra_args
 
+        # Query is always passed via stdin (no positional arg needed)
         return cmd
 
     @staticmethod
@@ -376,16 +423,15 @@ class JobPlacer:
                 "Specify either topology=TopologySource.…(…) or the shorthand "
                 "keyword arguments (topology_file / topology_toml_file), not both."
             )
-        if topology_file is not None and topology_toml_file is not None:
-            raise ValueError("topology_file and topology_toml_file are mutually exclusive.")
 
         if topology is not None:
             return topology
 
-        if topology_toml_file is not None:
-            return _TomlFile(Path(topology_toml_file))
-        if topology_file is not None:
-            return _SystemFile(path=Path(topology_file))
+        if topology_file is not None or topology_toml_file is not None:
+            return _BothFiles(
+                topology_file=Path(topology_file) if topology_file is not None else None,
+                topology_toml_file=Path(topology_toml_file) if topology_toml_file is not None else None,
+            )
 
         # Default: use scontrol (no file flags passed to the CLI)
         return _SystemScontrol()
@@ -398,10 +444,12 @@ class JobPlacer:
                 raise FileNotFoundError(f"job_placer binary not found at: {p}")
             return p
 
+        # 1. $PATH
         found = shutil.which("job_placer_placement_classes")
         if found:
             return Path(found)
 
+        # 2. Next to this module
         local = Path(__file__).parent / "target" / "release" / "job_placer_placement_classes"
         if local.exists():
             return local

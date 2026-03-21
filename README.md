@@ -190,14 +190,14 @@ cargo build
 cargo build --release
 
 # Visualize full graph (this will generate <system>_topo.svg)
-./target/debug/job_placer_viz -v --system leonardo -F leonardo_topo.txt --sinfo-file leonardo_sinfo.txt -p boost_usr_prod
-./target/debug/job_placer_viz -v --system alps -f systems/ALPS.toml -F alps_topo.txt --sinfo-file alps_sinfo.txt -p normal
-./target/debug/job_placer_viz -v --system jupiter -F jupiter_topo.txt --sinfo-file jupiter_sinfo.txt -p booster
+./target/debug/job_placer_viz -v --system leonardo -a -F leonardo_topo.txt --sinfo-file leonardo_sinfo.txt -p boost_usr_prod
+./target/debug/job_placer_viz -v --system alps -a -f systems/ALPS.toml -F alps_topo.txt --sinfo-file alps_sinfo.txt -p normal
+./target/debug/job_placer_viz -v --system jupiter -a -F jupiter_topo.txt --sinfo-file jupiter_sinfo.txt -p booster
 
 ./target/debug/job_placer_viz -v --system jupiter -F jupiter_topo.txt --nodelist "jpbo-001-[01-48],jpbo-002-[01-48],jpbo-003-[01-48],jpbo-092-[01-48],jpbo-093-[01-48],jpbo-094-[01-48],jpbo-095-[01-48],jpbo-101-[01-48],jpbo-102-[01-48],jpbo-103-[01-48],jpbo-104-[01-48],jpbo-105-[01-48]" --sinfo-file jupiter_sinfo.txt --out-svg topo_jupiter_nodelist.svg
 
 # Placement classes
-./target/debug/job_placer_placement_classes -v --system leonardo -F leonardo_topo.txt --sinfo-file leonardo_sinfo.txt -p boost_usr_prod --out-svg placement_leonardo.svg --seed 0 <(cat example/placements/test.json)
+./target/debug/job_placer_placement_classes -v --system leonardo -a -F leonardo_topo.txt --sinfo-file leonardo_sinfo.txt -p boost_usr_prod --out-svg placement_leonardo.svg --seed 0 <(cat example/placements/test.json)
 ./target/debug/job_placer_placement_classes -v --system jupiter -F jupiter_topo.txt --sinfo-file jupiter_sinfo.txt --nodelist "jpbo-001-[01-48],jpbo-002-[01-48],jpbo-003-[01-48],jpbo-092-[01-48],jpbo-093-[01-48],jpbo-094-[01-48],jpbo-095-[01-48],jpbo-101-[01-48],jpbo-102-[01-48],jpbo-103-[01-48],jpbo-104-[01-48],jpbo-105-[01-48]" --out-svg placement_jupiter.svg --seed 0 <(cat example/placements/test.json)
 ./target/debug/job_placer_placement_classes -v --system alps -f systems/ALPS.toml -F alps_topo.txt --sinfo-file alps_sinfo.txt --nodelist "nid[005449-005507,005510-005559],nid[005896-006003],nid[006458-006567]" --out-svg placement_alps.svg --seed 0 <(cat example/placements/test.json)
 ```
