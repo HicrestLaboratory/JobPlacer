@@ -108,7 +108,7 @@ pub fn init_logger(verbose: bool) {
     let level = if verbose {
         LevelFilter::Info
     } else {
-        LevelFilter::Warn
+        LevelFilter::Error
     };
     env_logger::Builder::new().filter_level(level).init();
 }
