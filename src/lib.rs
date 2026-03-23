@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use crate::{
     ir::topology_ir::TopologyIR,
     parsers::{
-        slurm::{expand_nodelist, get_nodelist_from_env},
+        slurm::{expand_nodelist, get_nodelist_from_env, NodeListParseError},
         toml::{self, TomlTopologyOptions},
     },
     topology::{
@@ -40,6 +40,10 @@ pub struct Cli {
     /// Explicit node list (SLURM nodes format).
     #[arg(short = 'n', long, value_name = "HOSTNAMES")]
     pub nodelist: Option<String>,
+
+    /// Explicit node blacklist (SLURM nodes format).
+    #[arg(short = 'b', long, value_name = "HOSTNAMES_BLACKLIST")]
+    pub nodes_blacklist: Option<String>,
 
     /// Consider all available nodes.
     #[arg(short = 'a', long, conflicts_with = "nodelist")]
@@ -120,10 +124,21 @@ pub fn init_logger(verbose: bool) {
 /// Load, enrich, and filter the topology IR according to the CLI flags.
 pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>> {
     let system = &cli.system;
+    let nodes_blacklist = match cli.nodes_blacklist.clone() {
+        None => None,
+        Some(bl) => Some(expand_nodelist(bl.as_str()).map_err(|e| {
+            NodeListParseError::new(format!(
+                "failed to parse nodes blacklist arg: {}. error: {}",
+                bl.as_str(),
+                e
+            ))
+        })?),
+    };
 
     // Build NodeFilterOptions from flags.
     let filter_opts = NodeFilterOptions {
         remove_unavailable: !cli.include_unavailable,
+        nodes_blacklist: nodes_blacklist.clone(),
     };
 
     // Resolve sinfo source (None means "no enrichment").
@@ -214,6 +229,12 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
     if let Some(partition) = &cli.partition {
         info!("Filtering by partition: {}", partition);
         ir = filter_by_partition(ir, partition);
+    }
+
+    // Blacklist filter (applied after sinfo enrichment).
+    if let Some(blacklist) = &nodes_blacklist {
+        info!("Filtering by blacklist: {:?}", &blacklist);
+        ir = filter_by_blacklist(ir, blacklist);
     }
 
     Ok(ir) // fix 5: idiomatic bare Ok(...)
@@ -311,6 +332,25 @@ fn filter_by_partition(ir: TopologyIR, partition: &str) -> TopologyIR {
                 .get("partition")
                 .map(|p| p.split(',').any(|part| part == partition))
                 .unwrap_or(false)
+        })
+        .map(|e| e.id.clone())
+        .collect();
+
+    ir.filter_remove_ids(&to_remove)
+}
+
+fn filter_by_blacklist(ir: TopologyIR, blacklist: &Vec<String>) -> TopologyIR {
+    use crate::ir::EntityKind;
+
+    // Collect IDs of compute nodes NOT in the requested partition.
+    let to_remove: Vec<_> = ir
+        .entities
+        .values()
+        .filter(|e| {
+            if !matches!(e.kind, EntityKind::Compute) {
+                return false;
+            }
+            blacklist.contains(&e.id.0)
         })
         .map(|e| e.id.clone())
         .collect();

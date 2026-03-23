@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Resolve node allocation
         // -----------------------------------------------------------------------
         let allocated_hostnames = resolve_nodes_filter(&cli)?;
-        info!("✓ Allocation: {} nodes", allocated_hostnames.len());
+        info!("Original allocation: {} nodes", allocated_hostnames.len());
         let filter: Vec<Id> = allocated_hostnames
             .iter()
             .map(|n| Id::from(n.as_str()))

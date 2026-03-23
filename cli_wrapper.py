@@ -245,6 +245,7 @@ class JobPlacer:
         topology_toml_file: Optional[Union[str, Path]] = None,
         # Node filtering
         nodelist: Optional[Union[str, List[str]]] = None,
+        nodes_blacklist: Optional[Union[str, List[str]]] = None,
         all_nodes: bool = False,
         partition: Optional[str] = None,
         include_unavailable: bool = False,
@@ -270,7 +271,10 @@ class JobPlacer:
             raise ValueError("nodelist and all_nodes are mutually exclusive.")
         if isinstance(nodelist, list):
             nodelist = ",".join(nodelist)
+        if isinstance(nodes_blacklist, list):
+            nodes_blacklist = ",".join(nodes_blacklist)
         self._nodelist = nodelist
+        self._nodes_blacklist = nodes_blacklist
         self._all_nodes = all_nodes
         self._partition = partition
         self._include_unavailable = include_unavailable
@@ -375,6 +379,8 @@ class JobPlacer:
             cmd += ["--all-nodes"]
         elif self._nodelist:
             cmd += ["--nodelist", self._nodelist]
+        elif self._nodes_blacklist:
+            cmd += ["--nodes-blacklist", self._nodes_blacklist]
 
         if self._partition:
             cmd += ["--partition", self._partition]

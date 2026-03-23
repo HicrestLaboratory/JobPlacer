@@ -65,12 +65,16 @@ pub struct NodeFilterOptions {
     /// If `true`, nodes whose state is Draining, Drained, or Down are removed.
     /// Default: `true`.
     pub remove_unavailable: bool,
+
+    /// User-defined arbitrary nodes to exclude
+    pub nodes_blacklist: Option<Vec<String>>,
 }
 
 impl Default for NodeFilterOptions {
     fn default() -> Self {
         Self {
             remove_unavailable: true,
+            nodes_blacklist:    None,
         }
     }
 }
