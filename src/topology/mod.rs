@@ -17,7 +17,7 @@ pub mod alps;
 pub mod jupiter;
 pub mod leonardo;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TopoSource {
     Command,
     /// The first path is to `scontrol show topology` dump, the second to a TOML file
@@ -50,10 +50,8 @@ fn resolve_topo_raw(source: Option<TopoSource>) -> Result<Option<String>, NodeLi
     match source {
         None => Ok(None),
         Some(TopoSource::Command) => Ok(Some(run_scontrol_show_topology())),
-        Some(TopoSource::Files(path, _)) => match path {
-            None => Ok(None),
-            Some(f) => Ok(Some(topology_from_file_raw(f)?)),
-        }
+        Some(TopoSource::Files(None, _)) => Ok(Some(run_scontrol_show_topology())),
+        Some(TopoSource::Files(Some(f), _)) => Ok(Some(topology_from_file_raw(f)?)),
     }
 }
 
