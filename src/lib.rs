@@ -245,13 +245,13 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
 // ---------------------------------------------------------------------------
 
 pub fn resolve_nodes_filter(cli: &Cli) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    match get_nodelist_from_env() {
-        Ok(nodes) => return Ok(nodes),
-        Err(_) => {}
-    }
     if let Some(raw) = &cli.nodelist {
         info!("Using explicit --nodelist.");
         return Ok(expand_nodelist(raw)?);
+    }
+    match get_nodelist_from_env() {
+        Ok(nodes) => return Ok(nodes),
+        Err(_) => {}
     }
     eprintln!(
         "error: Not inside a SLURM allocation and --nodelist was not provided.\n\

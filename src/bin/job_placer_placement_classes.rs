@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run placer
     // -----------------------------------------------------------------------
     let mut seed = cli.seed.unwrap_or(42);
-    const ATTEMPTS: usize = 6;
+    const ATTEMPTS: usize = 20;
 
     let mut last_result: Option<PlacementResult> = None;
     let mut placer = Placer::new(&ir, seed);
