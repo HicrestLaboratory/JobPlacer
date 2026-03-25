@@ -359,6 +359,41 @@ class JobPlacer:
             return PlacementResult(ok=False, reason=f"timeout after {timeout}s")
         except Exception as exc:
             return PlacementResult(ok=False, reason=f"Error: {exc}")
+        
+    def visualize(self, jobs: Dict[str, List[str]], out_svg: Path):
+        cmd: List[str] = [str(self._resolve_binary(None, True))]
+
+        self._topology._apply(cmd, self._system)
+        
+        if self._sinfo_file:
+            cmd += ["--sinfo-file", str(self._sinfo_file)]
+            
+        nodelist = ','.join(list(dict.fromkeys(node for node_list in jobs.values() for node in node_list)))
+        cmd += ["--nodelist", nodelist]
+        
+        cmd += ["--out-svg", str(out_svg), '--wait-stdin']
+        
+        print('='*80)
+        print(" ".join(cmd))
+        print(json.dumps(jobs))
+        print('='*80)
+        
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=json.dumps(jobs),
+                capture_output=True,
+                text=True,
+                timeout=10.0,
+            )
+            if proc.returncode != 0:
+                print(f'WARNING: job_placer_viz exited with code: {proc.returncode}')
+                print(f'stdout: {proc.stdout}')
+                print(f'stderr: {proc.stderr}')
+        except subprocess.TimeoutExpired:
+            return PlacementResult(ok=False, reason=f"timeout after 10s")
+        except Exception as exc:
+            return PlacementResult(ok=False, reason=f"Error: {exc}")
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -443,20 +478,22 @@ class JobPlacer:
         return _SystemScontrol()
 
     @staticmethod
-    def _resolve_binary(binary: Optional[Union[str, Path]]) -> Path:
+    def _resolve_binary(binary: Optional[Union[str, Path]], resolve_viz: bool = False) -> Path:
         if binary is not None:
             p = Path(binary)
             if not p.exists():
                 raise FileNotFoundError(f"job_placer binary not found at: {p}")
             return p
+        
+        bin_name = 'job_placer_viz' if resolve_viz else 'job_placer_placement_classes'
 
         # 1. $PATH
-        found = shutil.which("job_placer_placement_classes")
+        found = shutil.which(bin_name)
         if found:
             return Path(found)
 
         # 2. Next to this module
-        local = Path(__file__).parent / "target" / "release" / "job_placer_placement_classes"
+        local = Path(__file__).parent / "target" / "release" / bin_name
         if local.exists():
             return local
 

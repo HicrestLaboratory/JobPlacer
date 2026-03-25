@@ -89,6 +89,10 @@ pub struct Cli {
     /// File to write the SVG to
     #[arg(long)]
     pub out_svg: Option<String>,
+
+    /// Wait for query or input (behavior main-dependent)
+    #[arg(short = 'w', long)]
+    pub wait_stdin: bool,
 }
 
 // ---------------------------------------------------------------------------
