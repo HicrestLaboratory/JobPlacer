@@ -370,13 +370,7 @@ class JobPlacer:
             
         nodelist = ','.join(list(dict.fromkeys(node for node_list in jobs.values() for node in node_list)))
         cmd += ["--nodelist", nodelist]
-        
         cmd += ["--out-svg", str(out_svg), '--wait-stdin']
-        
-        print('='*80)
-        print(" ".join(cmd))
-        print(json.dumps(jobs))
-        print('='*80)
         
         try:
             proc = subprocess.run(
