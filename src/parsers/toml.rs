@@ -90,12 +90,39 @@ struct TomlSwitch {
     extra: HashMap<String, toml::Value>,
 }
 
+/// Accepts either `id = "foo"` or `id = ["foo", "bar"]` in TOML.
+/// In the latter case the values are joined with `'/'`.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Default for OneOrMany {
+    fn default() -> Self {
+        OneOrMany::Many(vec![])
+    }
+}
+
+impl OneOrMany {
+    fn into_vec(self) -> Vec<String> {
+        match self {
+            OneOrMany::One(s) if s.is_empty() => vec![],
+            OneOrMany::One(s) => vec![s],
+            OneOrMany::Many(v) => v,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct TomlNode {
     id: String,
-    switch: String,
+    switch: OneOrMany,
     xname: Option<String>,
-    /// Arbitrary extra metadata.
+    group: Option<String>,
+    #[serde(default)]
+    partitions: OneOrMany,
     #[serde(flatten)]
     extra: HashMap<String, toml::Value>,
 }
@@ -203,6 +230,7 @@ impl TopologyParser for TomlTopologyParser {
             let mut meta: HashMap<String, String> = HashMap::new();
             if let Some(g) = &sw.group {
                 meta.insert("cell".into(), g.clone());
+                meta.insert("group".into(), g.clone());
             }
             // Forward any extra scalar metadata fields declared in the TOML
             for (k, v) in &sw.extra {
@@ -224,13 +252,30 @@ impl TopologyParser for TomlTopologyParser {
 
         for node in &doc.node {
             let node_id = Id(node.id.clone());
-            let switch_id = Id(node.switch.clone());
+            let switch_ids: Vec<Id> = node.switch.clone().into_vec().into_iter().map(Id).collect();
 
             let mut meta: HashMap<String, String> = HashMap::new();
             if let Some(xn) = &node.xname {
                 meta.insert("xname".into(), xn.clone());
             }
+
+            if let Some(g) = &node.group {
+                meta.insert("cell".into(), g.clone());
+                meta.insert("group".into(), g.clone());
+            }
+            // TOML-declared partitions — stored now, sinfo enrichment will skip
+            // this node because the key will already be present.
+            let partitions = node.partitions.clone().into_vec();
+            if !partitions.is_empty() {
+                let mut deduped = partitions;
+                deduped.sort_unstable();
+                deduped.dedup();
+                meta.insert("partitions".into(), deduped.join(","));
+            }
             for (k, v) in &node.extra {
+                if k == "group" {
+                    continue;
+                }
                 if let Some(s) = toml_value_as_str(v) {
                     meta.insert(k.clone(), s);
                 }
@@ -242,9 +287,11 @@ impl TopologyParser for TomlTopologyParser {
                 meta,
             });
 
-            ir.add_contains(switch_id.clone(), node_id.clone());
-            ir.add_link(switch_id.clone(), node_id, w_node_switch);
-            populated_switches.insert(switch_id);
+            for switch_id in &switch_ids {
+                ir.add_contains(switch_id.clone(), node_id.clone());
+                ir.add_link(switch_id.clone(), node_id.clone(), w_node_switch);
+                populated_switches.insert(switch_id.clone());
+            }
         }
 
         // ---- Drop switches with no nodes --------------------------------
@@ -317,10 +364,14 @@ impl TopologyParser for TomlTopologyParser {
         for (node_name, partitions) in node_partitions {
             let id = Id(node_name);
             if let Some(entity) = ir.entities.get_mut(&id) {
-                let mut deduped = partitions;
-                deduped.sort_unstable();
-                deduped.dedup();
-                entity.meta.insert("partitions".into(), deduped.join(","));
+                let mut merged: Vec<String> = partitions;
+                // Merge with any partitions already declared in the TOML.
+                if let Some(existing) = entity.meta.get("partitions") {
+                    merged.extend(existing.split(',').map(str::to_owned));
+                }
+                merged.sort_unstable();
+                merged.dedup();
+                entity.meta.insert("partitions".into(), merged.join(","));
             }
         }
     }

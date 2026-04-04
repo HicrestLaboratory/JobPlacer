@@ -25,7 +25,7 @@ use crate::{
     },
 };
 
-const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter", "alps"];
+const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter", "alps", "lumi"];
 
 // ---------------------------------------------------------------------------
 // CLI definition
@@ -56,7 +56,7 @@ pub struct Cli {
 
     /// System name
     /// Currently supported: leonardo, jupiter, alps FIXME use SUPPORTED_SYSTEMS
-    #[arg(short = 's', long, value_name = "SYSTEM", value_parser = ["leonardo", "jupiter", "alps"])]
+    #[arg(short = 's', long, value_name = "SYSTEM", value_parser = ["leonardo", "jupiter", "alps", "lumi"])]
     pub system: String,
 
     /// System-specific topology source.
