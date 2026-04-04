@@ -34,7 +34,6 @@ Typical usage
 """
 
 from __future__ import annotations
-
 import json
 import shutil
 import subprocess
@@ -102,6 +101,80 @@ class PlacementResult:
             reason = raw.get("reason") or raw.get("message") or "Infeasible"
 
         return cls(ok=ok, placements=placements, reason=reason, raw=raw)
+    
+    
+@dataclass
+class SwitchStats:
+    switch_id: str
+    cell: str
+    rack: str
+    nodes: list[str]
+    node_count: int
+
+    @classmethod
+    def from_dict(cls, d: dict) -> SwitchStats:
+        return cls(
+            switch_id=d["switch_id"],
+            cell=d["cell"],
+            rack=d["rack"],
+            nodes=d["nodes"],
+            node_count=d["node_count"],
+        )
+
+
+@dataclass
+class GroupStats:
+    cell: str
+    switch_count: int
+    node_count: int
+    switches: list[SwitchStats]
+
+    @classmethod
+    def from_dict(cls, d: dict) -> GroupStats:
+        return cls(
+            cell=d["cell"],
+            switch_count=d["switch_count"],
+            node_count=d["node_count"],
+            switches=[SwitchStats.from_dict(s) for s in d["switches"]],
+        )
+
+
+@dataclass
+class JobStats:
+    total_nodes: int
+    group_count: int
+    total_switch_count: int
+    groups: list[GroupStats]
+    unresolved_nodes: list[str]
+
+    @classmethod
+    def from_dict(cls, d: dict) -> JobStats:
+        return cls(
+            total_nodes=d["total_nodes"],
+            group_count=d["group_count"],
+            total_switch_count=d["total_switch_count"],
+            groups=[GroupStats.from_dict(g) for g in d["groups"]],
+            unresolved_nodes=d["unresolved_nodes"],
+        )
+
+
+@dataclass
+class PlacementStats:
+    job_count: int
+    total_nodes: int
+    distinct_groups: int
+    distinct_switches: int
+    jobs: dict[str, JobStats]
+
+    @classmethod
+    def from_dict(cls, d: dict) -> PlacementStats:
+        return cls(
+            job_count=d["job_count"],
+            total_nodes=d["total_nodes"],
+            distinct_groups=d["distinct_groups"],
+            distinct_switches=d["distinct_switches"],
+            jobs={name: JobStats.from_dict(j) for name, j in d["jobs"].items()},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -360,8 +433,9 @@ class JobPlacer:
         except Exception as exc:
             return PlacementResult(ok=False, reason=f"Error: {exc}")
         
+        
     def visualize(self, jobs: Dict[str, List[str]], out_svg: Path):
-        cmd: List[str] = [str(self._resolve_binary(None, True))]
+        cmd: List[str] = [str(self._resolve_binary(None, 'job_placer_viz'))]
 
         self._topology._apply(cmd, self._system)
         
@@ -388,6 +462,44 @@ class JobPlacer:
             return PlacementResult(ok=False, reason=f"timeout after 10s")
         except Exception as exc:
             return PlacementResult(ok=False, reason=f"Error: {exc}")
+        
+        
+    def get_allocation_stats(self, allocations: Dict[str, List[str]], out_svg: Union[Path, None] = None):
+        cmd: List[str] = [str(self._resolve_binary(None, 'job_placer_alloc_stats'))]
+
+        self._topology._apply(cmd, self._system)
+        
+        if self._sinfo_file:
+            cmd += ["--sinfo-file", str(self._sinfo_file)]
+            
+        if out_svg:
+            cmd += ["--out-svg", str(out_svg)]
+            
+        cmd += ['--all-nodes', '--wait-stdin']
+        
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=json.dumps(allocations),
+                capture_output=True,
+                text=True,
+                timeout=10.0,
+            )
+            if proc.returncode != 0:
+                print(f'WARNING: job_placer_alloc_stats exited with code: {proc.returncode}')
+                print(f'stdout: {proc.stdout}')
+                print(f'stderr: {proc.stderr}')
+                return None
+            
+            return PlacementStats.from_dict(json.loads(proc.stdout))
+        except subprocess.TimeoutExpired:
+            print('WARNING: job_placer_alloc_stats TIMEOUT')
+            pass
+        except Exception as exc:
+            print(f'WARNING: job_placer_alloc_stats exception {exc}')
+            pass
+        
+        return None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -472,14 +584,12 @@ class JobPlacer:
         return _SystemScontrol()
 
     @staticmethod
-    def _resolve_binary(binary: Optional[Union[str, Path]], resolve_viz: bool = False) -> Path:
+    def _resolve_binary(binary: Optional[Union[str, Path]], bin_name: str = 'job_placer_placement_classes') -> Path:
         if binary is not None:
             p = Path(binary)
             if not p.exists():
                 raise FileNotFoundError(f"job_placer binary not found at: {p}")
             return p
-        
-        bin_name = 'job_placer_viz' if resolve_viz else 'job_placer_placement_classes'
 
         # 1. $PATH
         found = shutil.which(bin_name)

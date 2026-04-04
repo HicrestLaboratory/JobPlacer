@@ -2,6 +2,7 @@ pub mod graph;
 pub mod ir;
 pub mod parsers;
 pub mod placement;
+pub mod placement_stats;
 pub mod query;
 pub mod topology;
 

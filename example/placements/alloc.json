@@ -1,0 +1,756 @@
+{
+    "DP+PP+TP_g512_n128_inter-group-same-l1-4_0": [
+        "jpbo-097-36",
+        "jpbo-097-39",
+        "jpbo-097-33",
+        "jpbo-097-46",
+        "jpbo-097-42",
+        "jpbo-097-34",
+        "jpbo-097-45",
+        "jpbo-097-35",
+        "jpbo-097-37",
+        "jpbo-097-41",
+        "jpbo-097-44",
+        "jpbo-097-40",
+        "jpbo-097-43",
+        "jpbo-097-47",
+        "jpbo-097-48",
+        "jpbo-097-38",
+        "jpbo-099-43",
+        "jpbo-099-48",
+        "jpbo-099-46",
+        "jpbo-099-44",
+        "jpbo-099-42",
+        "jpbo-099-38",
+        "jpbo-099-39",
+        "jpbo-099-34",
+        "jpbo-099-36",
+        "jpbo-099-35",
+        "jpbo-099-40",
+        "jpbo-099-41",
+        "jpbo-018-02",
+        "jpbo-018-05",
+        "jpbo-018-01",
+        "jpbo-018-15",
+        "jpbo-018-08",
+        "jpbo-018-13",
+        "jpbo-018-07",
+        "jpbo-018-04",
+        "jpbo-018-12",
+        "jpbo-018-03",
+        "jpbo-018-14",
+        "jpbo-018-11",
+        "jpbo-020-23",
+        "jpbo-020-17",
+        "jpbo-020-25",
+        "jpbo-020-32",
+        "jpbo-020-18",
+        "jpbo-020-29",
+        "jpbo-020-27",
+        "jpbo-020-26",
+        "jpbo-020-21",
+        "jpbo-020-20",
+        "jpbo-020-22",
+        "jpbo-020-19",
+        "jpbo-096-08",
+        "jpbo-096-09",
+        "jpbo-096-13",
+        "jpbo-096-04",
+        "jpbo-096-03",
+        "jpbo-096-07",
+        "jpbo-096-10",
+        "jpbo-096-05",
+        "jpbo-096-14",
+        "jpbo-096-01",
+        "jpbo-096-12",
+        "jpbo-096-16",
+        "jpbo-100-37",
+        "jpbo-100-36",
+        "jpbo-100-34",
+        "jpbo-100-47",
+        "jpbo-100-35",
+        "jpbo-100-42",
+        "jpbo-100-45",
+        "jpbo-100-38",
+        "jpbo-100-40",
+        "jpbo-100-46",
+        "jpbo-100-44",
+        "jpbo-100-39",
+        "jpbo-048-29",
+        "jpbo-048-20",
+        "jpbo-048-26",
+        "jpbo-048-32",
+        "jpbo-048-19",
+        "jpbo-048-31",
+        "jpbo-048-27",
+        "jpbo-048-30",
+        "jpbo-048-28",
+        "jpbo-048-24",
+        "jpbo-048-23",
+        "jpbo-048-25",
+        "jpbo-020-38",
+        "jpbo-020-44",
+        "jpbo-020-39",
+        "jpbo-020-34",
+        "jpbo-020-46",
+        "jpbo-020-35",
+        "jpbo-020-48",
+        "jpbo-020-43",
+        "jpbo-020-42",
+        "jpbo-020-37",
+        "jpbo-020-33",
+        "jpbo-020-47",
+        "jpbo-048-08",
+        "jpbo-048-16",
+        "jpbo-048-01",
+        "jpbo-048-15",
+        "jpbo-048-05",
+        "jpbo-048-04",
+        "jpbo-048-03",
+        "jpbo-048-07",
+        "jpbo-048-02",
+        "jpbo-048-13",
+        "jpbo-048-14",
+        "jpbo-048-06",
+        "jpbo-046-42",
+        "jpbo-046-34",
+        "jpbo-046-41",
+        "jpbo-046-39",
+        "jpbo-046-46",
+        "jpbo-046-43",
+        "jpbo-046-45",
+        "jpbo-046-47",
+        "jpbo-046-48",
+        "jpbo-046-38",
+        "jpbo-046-44",
+        "jpbo-046-33",
+        "jpbo-096-48",
+        "jpbo-096-38",
+        "jpbo-096-47",
+        "jpbo-096-33"
+    ],
+    "DP+PP+Expert_g512_n128_inter-group_1": [
+        "jpbo-097-06",
+        "jpbo-018-36",
+        "jpbo-050-06",
+        "jpbo-099-12",
+        "jpbo-016-45",
+        "jpbo-050-36",
+        "jpbo-098-43",
+        "jpbo-018-17",
+        "jpbo-046-31",
+        "jpbo-096-45",
+        "jpbo-016-12",
+        "jpbo-047-34",
+        "jpbo-097-25",
+        "jpbo-019-10",
+        "jpbo-049-15",
+        "jpbo-099-02",
+        "jpbo-019-36",
+        "jpbo-048-38",
+        "jpbo-100-25",
+        "jpbo-016-17",
+        "jpbo-049-38",
+        "jpbo-100-29",
+        "jpbo-020-09",
+        "jpbo-047-17",
+        "jpbo-098-25",
+        "jpbo-019-38",
+        "jpbo-049-12",
+        "jpbo-098-20",
+        "jpbo-019-21",
+        "jpbo-047-30",
+        "jpbo-100-28",
+        "jpbo-017-44",
+        "jpbo-046-06",
+        "jpbo-098-30",
+        "jpbo-018-41",
+        "jpbo-046-12",
+        "jpbo-100-30",
+        "jpbo-016-26",
+        "jpbo-049-40",
+        "jpbo-098-11",
+        "jpbo-019-14",
+        "jpbo-047-46",
+        "jpbo-096-15",
+        "jpbo-019-08",
+        "jpbo-046-20",
+        "jpbo-097-17",
+        "jpbo-016-11",
+        "jpbo-047-01",
+        "jpbo-096-22",
+        "jpbo-019-25",
+        "jpbo-049-43",
+        "jpbo-097-22",
+        "jpbo-019-15",
+        "jpbo-048-43",
+        "jpbo-098-04",
+        "jpbo-020-08",
+        "jpbo-049-22",
+        "jpbo-098-07",
+        "jpbo-020-15",
+        "jpbo-048-10",
+        "jpbo-100-06",
+        "jpbo-020-16",
+        "jpbo-050-41",
+        "jpbo-098-06",
+        "jpbo-018-40",
+        "jpbo-049-03",
+        "jpbo-099-09",
+        "jpbo-018-35",
+        "jpbo-049-06",
+        "jpbo-098-09",
+        "jpbo-017-23",
+        "jpbo-047-10",
+        "jpbo-097-04",
+        "jpbo-019-37",
+        "jpbo-047-13",
+        "jpbo-097-13",
+        "jpbo-017-33",
+        "jpbo-049-44",
+        "jpbo-099-27",
+        "jpbo-018-19",
+        "jpbo-047-25",
+        "jpbo-098-16",
+        "jpbo-018-18",
+        "jpbo-049-08",
+        "jpbo-100-02",
+        "jpbo-016-41",
+        "jpbo-047-43",
+        "jpbo-096-41",
+        "jpbo-020-01",
+        "jpbo-047-26",
+        "jpbo-096-39",
+        "jpbo-016-20",
+        "jpbo-049-05",
+        "jpbo-099-03",
+        "jpbo-016-43",
+        "jpbo-046-16",
+        "jpbo-097-03",
+        "jpbo-016-30",
+        "jpbo-046-27",
+        "jpbo-098-36",
+        "jpbo-019-27",
+        "jpbo-047-33",
+        "jpbo-100-14",
+        "jpbo-016-03",
+        "jpbo-047-02",
+        "jpbo-098-42",
+        "jpbo-016-25",
+        "jpbo-047-03",
+        "jpbo-098-32",
+        "jpbo-016-13",
+        "jpbo-049-04",
+        "jpbo-097-10",
+        "jpbo-016-09",
+        "jpbo-046-19",
+        "jpbo-100-04",
+        "jpbo-016-04",
+        "jpbo-048-33",
+        "jpbo-100-24",
+        "jpbo-019-30",
+        "jpbo-047-11",
+        "jpbo-099-30",
+        "jpbo-018-09",
+        "jpbo-047-47",
+        "jpbo-096-31",
+        "jpbo-018-29",
+        "jpbo-050-27",
+        "jpbo-098-08",
+        "jpbo-019-40"
+    ],
+    "DP+PP+Expert_g512_n128_inter-group_2": [
+        "jpbo-020-28",
+        "jpbo-100-27",
+        "jpbo-050-23",
+        "jpbo-018-10",
+        "jpbo-096-40",
+        "jpbo-046-28",
+        "jpbo-016-18",
+        "jpbo-098-23",
+        "jpbo-050-32",
+        "jpbo-017-36",
+        "jpbo-100-10",
+        "jpbo-049-45",
+        "jpbo-020-11",
+        "jpbo-098-35",
+        "jpbo-050-45",
+        "jpbo-016-42",
+        "jpbo-096-28",
+        "jpbo-050-46",
+        "jpbo-020-45",
+        "jpbo-100-48",
+        "jpbo-048-41",
+        "jpbo-017-43",
+        "jpbo-096-43",
+        "jpbo-050-33",
+        "jpbo-020-05",
+        "jpbo-096-11",
+        "jpbo-048-45",
+        "jpbo-019-31",
+        "jpbo-099-11",
+        "jpbo-046-13",
+        "jpbo-018-33",
+        "jpbo-098-31",
+        "jpbo-050-18",
+        "jpbo-016-15",
+        "jpbo-100-13",
+        "jpbo-050-21",
+        "jpbo-016-06",
+        "jpbo-098-05",
+        "jpbo-049-19",
+        "jpbo-018-45",
+        "jpbo-096-42",
+        "jpbo-046-21",
+        "jpbo-016-23",
+        "jpbo-099-29",
+        "jpbo-049-16",
+        "jpbo-019-48",
+        "jpbo-098-40",
+        "jpbo-050-31",
+        "jpbo-018-38",
+        "jpbo-097-19",
+        "jpbo-046-22",
+        "jpbo-019-12",
+        "jpbo-098-47",
+        "jpbo-046-03",
+        "jpbo-019-39",
+        "jpbo-097-05",
+        "jpbo-047-28",
+        "jpbo-020-06",
+        "jpbo-100-32",
+        "jpbo-047-32",
+        "jpbo-020-30",
+        "jpbo-098-29",
+        "jpbo-046-36",
+        "jpbo-020-41",
+        "jpbo-097-01",
+        "jpbo-048-12",
+        "jpbo-019-26",
+        "jpbo-098-34",
+        "jpbo-046-09",
+        "jpbo-018-44",
+        "jpbo-100-26",
+        "jpbo-047-08",
+        "jpbo-016-48",
+        "jpbo-098-28",
+        "jpbo-050-30",
+        "jpbo-018-20",
+        "jpbo-098-14",
+        "jpbo-049-48",
+        "jpbo-016-07",
+        "jpbo-099-31",
+        "jpbo-050-40",
+        "jpbo-018-26",
+        "jpbo-099-21",
+        "jpbo-048-34",
+        "jpbo-018-27",
+        "jpbo-096-23",
+        "jpbo-047-15",
+        "jpbo-016-19",
+        "jpbo-097-24",
+        "jpbo-046-17",
+        "jpbo-019-35",
+        "jpbo-097-07",
+        "jpbo-049-13",
+        "jpbo-016-34",
+        "jpbo-099-04",
+        "jpbo-046-30",
+        "jpbo-020-04",
+        "jpbo-099-16",
+        "jpbo-047-36",
+        "jpbo-020-12",
+        "jpbo-099-24",
+        "jpbo-047-41",
+        "jpbo-019-17",
+        "jpbo-099-14",
+        "jpbo-047-29",
+        "jpbo-016-02",
+        "jpbo-100-20",
+        "jpbo-047-40",
+        "jpbo-019-44",
+        "jpbo-099-10",
+        "jpbo-050-42",
+        "jpbo-019-04",
+        "jpbo-099-19",
+        "jpbo-048-35",
+        "jpbo-016-35",
+        "jpbo-096-26",
+        "jpbo-048-22",
+        "jpbo-019-11",
+        "jpbo-099-32",
+        "jpbo-048-48",
+        "jpbo-018-37",
+        "jpbo-100-23",
+        "jpbo-047-04",
+        "jpbo-016-27",
+        "jpbo-098-33",
+        "jpbo-046-08",
+        "jpbo-019-18",
+        "jpbo-096-25"
+    ],
+    "DP+PP_g64_n16_intra-group-same-l1-2_3": [
+        "jpbo-017-10",
+        "jpbo-017-08",
+        "jpbo-017-05",
+        "jpbo-017-02",
+        "jpbo-017-06",
+        "jpbo-017-12",
+        "jpbo-017-13",
+        "jpbo-017-14",
+        "jpbo-017-04",
+        "jpbo-017-11",
+        "jpbo-017-09",
+        "jpbo-017-15",
+        "jpbo-017-07",
+        "jpbo-017-01",
+        "jpbo-016-14",
+        "jpbo-016-01"
+    ],
+    "DP+PP_g64_n16_intra-group-same-l1-2_4": [
+        "jpbo-050-02",
+        "jpbo-050-07",
+        "jpbo-050-03",
+        "jpbo-050-09",
+        "jpbo-050-14",
+        "jpbo-050-01",
+        "jpbo-050-04",
+        "jpbo-050-11",
+        "jpbo-050-13",
+        "jpbo-050-05",
+        "jpbo-050-10",
+        "jpbo-050-16",
+        "jpbo-050-12",
+        "jpbo-050-08",
+        "jpbo-050-44",
+        "jpbo-050-39"
+    ],
+    "DP+PP_g64_n16_intra-group-same-l1-2_5": [
+        "jpbo-017-29",
+        "jpbo-017-26",
+        "jpbo-017-18",
+        "jpbo-017-27",
+        "jpbo-017-25",
+        "jpbo-017-32",
+        "jpbo-017-30",
+        "jpbo-017-24",
+        "jpbo-017-20",
+        "jpbo-017-31",
+        "jpbo-017-22",
+        "jpbo-017-21",
+        "jpbo-017-19",
+        "jpbo-017-28",
+        "jpbo-016-24",
+        "jpbo-016-21"
+    ],
+    "FSDP_g32_n8_intra-group-same-l1-2_6": [
+        "jpbo-049-41",
+        "jpbo-049-37",
+        "jpbo-049-42",
+        "jpbo-049-34",
+        "jpbo-049-39",
+        "jpbo-049-33",
+        "jpbo-050-22",
+        "jpbo-050-28"
+    ],
+    "FSDP_g32_n8_inter-group-same-l1-2_7": [
+        "jpbo-046-04",
+        "jpbo-046-02",
+        "jpbo-046-14",
+        "jpbo-046-15",
+        "jpbo-046-01",
+        "jpbo-046-07",
+        "jpbo-098-01",
+        "jpbo-098-13"
+    ],
+    "FSDP_g32_n8_intra-group-same-l1-2_8": [
+        "jpbo-096-32",
+        "jpbo-096-19",
+        "jpbo-096-21",
+        "jpbo-096-24",
+        "jpbo-096-29",
+        "jpbo-096-18",
+        "jpbo-098-02",
+        "jpbo-098-12"
+    ],
+    "DP+PP_g32_n8_intra-l1_9": [
+        "jpbo-049-26",
+        "jpbo-049-27",
+        "jpbo-049-23",
+        "jpbo-049-21",
+        "jpbo-049-32",
+        "jpbo-049-24",
+        "jpbo-049-31",
+        "jpbo-049-20"
+    ],
+    "FSDP_g16_n4_intra-group-same-l1-2_10": [
+        "jpbo-099-15",
+        "jpbo-099-01",
+        "jpbo-097-11",
+        "jpbo-097-15"
+    ],
+    "DP_g8_n2_intra-group_11": [
+        "jpbo-098-46",
+        "jpbo-098-10"
+    ],
+    "DP_g8_n2_intra-group_12": [
+        "jpbo-019-47",
+        "jpbo-017-38"
+    ],
+    "DP_g8_n2_inter-group_13": [
+        "jpbo-016-31",
+        "jpbo-100-17"
+    ],
+    "DP_g8_n2_intra-group_14": [
+        "jpbo-048-39",
+        "jpbo-046-11"
+    ],
+    "DP_g8_n2_inter-group_15": [
+        "jpbo-016-16",
+        "jpbo-049-46"
+    ],
+    "DP_g8_n2_inter-group_16": [
+        "jpbo-020-10",
+        "jpbo-098-38"
+    ],
+    "DP_g8_n2_intra-group_17": [
+        "jpbo-049-07",
+        "jpbo-048-37"
+    ],
+    "DP_g8_n2_inter-group_18": [
+        "jpbo-018-24",
+        "jpbo-096-35"
+    ],
+    "DP_g8_n2_intra-group_19": [
+        "jpbo-020-40",
+        "jpbo-020-14"
+    ],
+    "DP_g8_n2_inter-group_20": [
+        "jpbo-016-32",
+        "jpbo-049-09"
+    ],
+    "DP_g8_n2_intra-group_21": [
+        "jpbo-047-35",
+        "jpbo-046-23"
+    ],
+    "DP_g8_n2_inter-group_22": [
+        "jpbo-050-15",
+        "jpbo-099-06"
+    ],
+    "DP_g8_n2_intra-group_23": [
+        "jpbo-020-24",
+        "jpbo-017-16"
+    ],
+    "DP_g8_n2_inter-group_24": [
+        "jpbo-016-33",
+        "jpbo-100-05"
+    ],
+    "DP_g8_n2_inter-group_25": [
+        "jpbo-100-03",
+        "jpbo-019-16"
+    ],
+    "DP_g8_n2_inter-group_26": [
+        "jpbo-096-17",
+        "jpbo-017-40"
+    ],
+    "DP_g8_n2_inter-group_27": [
+        "jpbo-016-44",
+        "jpbo-049-35"
+    ],
+    "DP_g8_n2_inter-group_28": [
+        "jpbo-098-15",
+        "jpbo-018-25"
+    ],
+    "DP_g8_n2_intra-l1_29": [
+        "jpbo-097-21",
+        "jpbo-097-32"
+    ],
+    "DP_g8_n2_intra-l1_30": [
+        "jpbo-100-15",
+        "jpbo-100-01"
+    ],
+    "DP_g8_n2_intra-group_31": [
+        "jpbo-017-03",
+        "jpbo-016-10"
+    ],
+    "DP_g8_n2_intra-group_32": [
+        "jpbo-017-17",
+        "jpbo-016-08"
+    ],
+    "DP_g8_n2_intra-group_33": [
+        "jpbo-016-29",
+        "jpbo-018-42"
+    ],
+    "DP_g8_n2_inter-group_34": [
+        "jpbo-019-19",
+        "jpbo-049-11"
+    ],
+    "DP_g8_n2_intra-group_35": [
+        "jpbo-049-02",
+        "jpbo-048-42"
+    ],
+    "DP_g8_n2_intra-l1_36": [
+        "jpbo-098-44",
+        "jpbo-098-37"
+    ],
+    "DP_g8_n2_intra-group_37": [
+        "jpbo-097-09",
+        "jpbo-100-09"
+    ],
+    "DP_g8_n2_intra-l1_38": [
+        "jpbo-098-39",
+        "jpbo-098-45"
+    ],
+    "DP_g8_n2_intra-l1_39": [
+        "jpbo-018-32",
+        "jpbo-018-23"
+    ],
+    "DP_g8_n2_inter-group_40": [
+        "jpbo-050-24",
+        "jpbo-016-36"
+    ],
+    "DP_g8_n2_intra-l1_41": [
+        "jpbo-019-13",
+        "jpbo-019-05"
+    ],
+    "DP_g8_n2_intra-l1_42": [
+        "jpbo-047-19",
+        "jpbo-047-24"
+    ],
+    "DP_g8_n2_inter-group_43": [
+        "jpbo-020-13",
+        "jpbo-050-25"
+    ],
+    "DP_g8_n2_inter-group_44": [
+        "jpbo-017-35",
+        "jpbo-098-24"
+    ],
+    "DP_g8_n2_inter-group_45": [
+        "jpbo-019-03",
+        "jpbo-099-13"
+    ],
+    "DP_g8_n2_intra-group_46": [
+        "jpbo-019-09",
+        "jpbo-018-30"
+    ],
+    "DP_g8_n2_intra-l1_47": [
+        "jpbo-097-23",
+        "jpbo-097-27"
+    ],
+    "DP_g8_n2_intra-l1_48": [
+        "jpbo-047-42",
+        "jpbo-047-39"
+    ],
+    "DP_g8_n2_intra-group_49": [
+        "jpbo-019-28",
+        "jpbo-016-46"
+    ],
+    "DP_g8_n2_intra-l1_50": [
+        "jpbo-049-30",
+        "jpbo-049-25"
+    ],
+    "DP_g8_n2_intra-group_51": [
+        "jpbo-098-19",
+        "jpbo-100-11"
+    ],
+    "DP_g8_n2_inter-group_52": [
+        "jpbo-100-19",
+        "jpbo-019-33"
+    ],
+    "DP_g8_n2_intra-l1_53": [
+        "jpbo-019-02",
+        "jpbo-019-06"
+    ],
+    "DP_g8_n2_intra-group_54": [
+        "jpbo-096-02",
+        "jpbo-099-33"
+    ],
+    "DP_g8_n2_intra-l1_55": [
+        "jpbo-047-16",
+        "jpbo-047-14"
+    ],
+    "DP_g8_n2_inter-group_56": [
+        "jpbo-098-27",
+        "jpbo-050-29"
+    ],
+    "DP_g8_n2_intra-group_57": [
+        "jpbo-048-46",
+        "jpbo-048-18"
+    ],
+    "DP_g8_n2_intra-l1_58": [
+        "jpbo-016-39",
+        "jpbo-016-38"
+    ],
+    "DP_g8_n2_inter-group_59": [
+        "jpbo-019-01",
+        "jpbo-100-43"
+    ],
+    "DP_g8_n2_inter-group_60": [
+        "jpbo-050-35",
+        "jpbo-019-22"
+    ],
+    "DP_g8_n2_inter-group_61": [
+        "jpbo-099-20",
+        "jpbo-019-34"
+    ],
+    "DP_g8_n2_inter-group_62": [
+        "jpbo-016-22",
+        "jpbo-046-37"
+    ],
+    "DP_g8_n2_intra-l1_63": [
+        "jpbo-019-20",
+        "jpbo-019-32"
+    ],
+    "DP_g8_n2_intra-group_64": [
+        "jpbo-018-28",
+        "jpbo-018-48"
+    ],
+    "DP_g8_n2_intra-group_65": [
+        "jpbo-016-05",
+        "jpbo-018-06"
+    ],
+    "DP_g8_n2_inter-group_66": [
+        "jpbo-049-47",
+        "jpbo-097-28"
+    ],
+    "DP_g8_n2_intra-group_67": [
+        "jpbo-018-39",
+        "jpbo-016-40"
+    ],
+    "DP_g8_n2_intra-group_68": [
+        "jpbo-019-43",
+        "jpbo-016-37"
+    ],
+    "DP_g8_n2_inter-group_69": [
+        "jpbo-096-46",
+        "jpbo-050-19"
+    ],
+    "DP_g8_n2_inter-group_70": [
+        "jpbo-020-03",
+        "jpbo-047-06"
+    ],
+    "DP_g8_n2_inter-group_71": [
+        "jpbo-050-47",
+        "jpbo-099-22"
+    ],
+    "DP_g8_n2_inter-group_72": [
+        "jpbo-099-17",
+        "jpbo-047-23"
+    ],
+    "DP_g8_n2_intra-l1_73": [
+        "jpbo-020-02",
+        "jpbo-020-07"
+    ],
+    "DP_g8_n2_inter-group_74": [
+        "jpbo-096-27",
+        "jpbo-047-07"
+    ],
+    "DP_g8_n2_intra-l1_75": [
+        "jpbo-099-26",
+        "jpbo-099-25"
+    ],
+    "DP_g8_n2_inter-group_76": [
+        "jpbo-047-12",
+        "jpbo-100-12"
+    ]
+}

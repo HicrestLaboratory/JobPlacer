@@ -2,12 +2,14 @@ use clap::Parser;
 use job_placer::{
     graph::display::{display_graph, Allocations, DisplayOptions},
     init_logger,
-    ir::{topology_ir::TopologyIR, EntityKind, Id},
-    load_topology, resolve_nodes_filter, Cli,
+    ir::Id,
+    load_topology,
+    placement::filter_ir_by_allocations,
+    resolve_nodes_filter, Cli,
 };
 use log::info;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     io::{self, Read},
 };
 
@@ -25,47 +27,6 @@ pub fn placement_to_allocations(result: &PlacementResult) -> Option<Allocations>
         ),
         PlacementResult::Infeasible { .. } => None,
     }
-}
-
-pub fn filter_ir_by_allocations(ir: &TopologyIR, allocations: &Allocations) -> TopologyIR {
-    let allocated_nodes: HashSet<Id> = allocations
-        .values()
-        .flatten()
-        .map(|s| Id(s.clone()))
-        .collect();
-
-    // Keep an L1 switch only if it contains at least one allocated node
-    let active_l1s: HashSet<Id> = ir
-        .entities
-        .values()
-        .filter(|e| matches!(e.kind, EntityKind::Switch { level: Some(0) }))
-        .filter(|e| {
-            ir.contains
-                .get(&e.id)
-                .map(|children| children.iter().any(|c| allocated_nodes.contains(c)))
-                .unwrap_or(false)
-        })
-        .map(|e| e.id.clone())
-        .collect();
-
-    // Keep: all allocated compute nodes + active L1s + all L2 switches
-    // (L2s are kept unconditionally since they represent fabric structure,
-    //  not compute assignment — filter them out too if you prefer)
-    let keep: Vec<Id> = ir
-        .entities
-        .keys()
-        .filter(|id| {
-            allocated_nodes.contains(id)
-                || active_l1s.contains(id)
-                || matches!(
-                    ir.entities.get(id),
-                    Some(e) if matches!(e.kind, EntityKind::Switch { level: Some(1) })
-                )
-        })
-        .cloned()
-        .collect();
-
-    ir.filter_by_ids(&keep)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

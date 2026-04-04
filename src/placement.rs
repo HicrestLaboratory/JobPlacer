@@ -6,6 +6,7 @@ use log::info;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::graph::display::Allocations;
 use crate::ir::topology_ir::TopologyIR;
 use crate::ir::EntityKind;
 use crate::ir::Id;
@@ -90,6 +91,47 @@ pub enum PlacementResult {
     },
     #[serde(rename = "infeasible")]
     Infeasible { reason: String },
+}
+
+pub fn filter_ir_by_allocations(ir: &TopologyIR, allocations: &Allocations) -> TopologyIR {
+    let allocated_nodes: HashSet<Id> = allocations
+        .values()
+        .flatten()
+        .map(|s| Id(s.clone()))
+        .collect();
+
+    // Keep an L1 switch only if it contains at least one allocated node
+    let active_l1s: HashSet<Id> = ir
+        .entities
+        .values()
+        .filter(|e| matches!(e.kind, EntityKind::Switch { level: Some(0) }))
+        .filter(|e| {
+            ir.contains
+                .get(&e.id)
+                .map(|children| children.iter().any(|c| allocated_nodes.contains(c)))
+                .unwrap_or(false)
+        })
+        .map(|e| e.id.clone())
+        .collect();
+
+    // Keep: all allocated compute nodes + active L1s + all L2 switches
+    // (L2s are kept unconditionally since they represent fabric structure,
+    //  not compute assignment — filter them out too if you prefer)
+    let keep: Vec<Id> = ir
+        .entities
+        .keys()
+        .filter(|id| {
+            allocated_nodes.contains(id)
+                || active_l1s.contains(id)
+                || matches!(
+                    ir.entities.get(id),
+                    Some(e) if matches!(e.kind, EntityKind::Switch { level: Some(1) })
+                )
+        })
+        .cloned()
+        .collect();
+
+    ir.filter_by_ids(&keep)
 }
 
 // ---------------------------------------------------------------------------
