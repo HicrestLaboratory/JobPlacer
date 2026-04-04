@@ -162,8 +162,8 @@ class JobStats:
 class PlacementStats:
     job_count: int
     total_nodes: int
-    distinct_groups: int
-    distinct_switches: int
+    distinct_groups: set[str]
+    distinct_switches: set[str]
     jobs: dict[str, JobStats]
 
     @classmethod

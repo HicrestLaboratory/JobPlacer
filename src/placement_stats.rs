@@ -71,9 +71,9 @@ pub struct PlacementStats {
     /// Total nodes across all jobs.
     pub total_nodes: usize,
     /// Number of distinct cells used across all jobs.
-    pub distinct_groups: usize,
+    pub distinct_groups: BTreeSet<String>,
     /// Number of distinct L1 switches used across all jobs.
-    pub distinct_switches: usize,
+    pub distinct_switches: BTreeSet<String>,
     /// Per-job breakdown, keyed by job name.
     pub jobs: BTreeMap<String, JobStats>,
 }
@@ -121,8 +121,8 @@ impl PlacementStats {
         Self {
             job_count: jobs.len(),
             total_nodes,
-            distinct_groups: all_cells.len(),
-            distinct_switches: all_switches.len(),
+            distinct_groups: all_cells,
+            distinct_switches: all_switches,
             jobs,
         }
     }
