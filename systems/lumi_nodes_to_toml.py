@@ -6,6 +6,12 @@ Usage:
     python lumi_to_toml.py nodelist.txt [output.toml]
 
 If output path is omitted, writes to stdout.
+
+Input format (modern SLURM):
+    NodeName=nid00[5000-5123] Feature=AMD_EPYC_7A53,x1100,eessi Gres=gpu:mi250:8
+    Sockets=8 CoresPerSocket=8 CPUSpecList=0,16,32,48,64,80,96,112
+    NodeName=nid00[5124-5247] Feature=AMD_EPYC_7A53,x1101,eessi Gres=gpu:mi250:8
+    ...
 """
 
 import sys
@@ -13,85 +19,173 @@ import re
 from collections import defaultdict
 
 # ---------------------------------------------------------------------------
-# Group-assignment formulas
+# Cabinet and group assignment
 # ---------------------------------------------------------------------------
 
-def lumi_c_group(nodenum: int) -> int:
-    """LUMI-C cabinet index (0-based)."""
-    return (nodenum - 1000) // 256
-
-
-def lumi_g_group(nodenum: int) -> int:
+def extract_cabinet_from_features(features: str) -> str:
     """
-    LUMI-G cabinet index (0-based within LUMI-G, so real cabinet = 8 + result).
-    Groups 0-22 have 124 nodes each; group 23 (last) has 126 nodes.
-    Formula: min(floor((nodenum - 5000) / 124), 23)
+    Extract cabinet ID from Features string.
+    Looks for pattern like x1100, x1101, etc.
+    Returns cabinet ID (e.g. 'x1100') or None if not found.
     """
-    return min((nodenum - 5000) // 124, 23)
-
-
-def classify(nodenum: int) -> str:
-    """Return 'C' for LUMI-C nodes, 'G' for LUMI-G nodes, None otherwise."""
-    if 1000 <= nodenum < 5000:
-        return "C"
-    if 5000 <= nodenum < 10000:
-        return "G"
+    m = re.search(r'(x[0-9]{4})', features)
+    if m:
+        return m.group(1)
     return None
 
 
-# ---------------------------------------------------------------------------
-# Switch-assignment formulas
-# ---------------------------------------------------------------------------
-# LUMI-C:
-#   256 nodes/group, 16 switches/group (s0-s15), 16 nodes/switch
-#   switch_index = node_within_group // 16
-#
-# LUMI-G:
-#   Each node has 4 GPUs, each GPU connects to a different switch.
-#   Groups 0-22: 31 switches (s0-s30), 124 nodes/group
-#   Group 23   : 32 switches (s0-s31), 126 nodes/group
-#   Switch mapping (ADJUST HERE if hardware layout differs):
-#     GPU rail r of node n_local → switch index: (n_local % switches_per_rail) + r * switches_per_rail
-#     where switches_per_rail = num_switches // 4  (integer division)
-#   This spreads the 4 GPU rails evenly across the 31/32 switches.
-
-def lumi_c_switch(nodenum: int) -> list[str]:
-    """Return list with one switch id string for a LUMI-C node."""
-    group_idx = lumi_c_group(nodenum)
-    cabinet = group_idx             # 0-based cabinet for LUMI-C
-    n_local = (nodenum - 1000) % 256
-    sw_idx  = n_local // 16
-    group_id  = f"x{1000 + cabinet}"
-    switch_id = f"{group_id}s{sw_idx}"
-    return [switch_id]
-
-
-def lumi_g_switch(nodenum: int) -> list[str]:
+def expand_nodename_range(nodename: str) -> list[str]:
     """
-    Return list of 4 switch id strings (one per GPU rail) for a LUMI-G node.
-    LUMI-G cabinets start at x1200 (= LUMI cabinet 8 + group index).
+    Expand node name ranges like nid00[5000-5123] to individual node names.
+    Returns list of node names like ['nid005000', 'nid005001', ..., 'nid005123']
     """
-    group_idx    = lumi_g_group(nodenum)
-    cabinet      = 8 + group_idx          # absolute cabinet number
-    is_last      = (group_idx == 23)
-    num_switches = 32 if is_last else 31
-    switches_per_rail = num_switches // 4  # 8 for normal groups, 8 for last
+    m = re.match(r'(nid0*)(\[(\d+)-(\d+)\])', nodename)
+    if not m:
+        # Not a range, return as-is
+        return [nodename]
+    
+    prefix = m.group(1)  # e.g. "nid00"
+    start = int(m.group(3))
+    end = int(m.group(4))
+    
+    return [f"{prefix}{i}" for i in range(start, end + 1)]
 
-    # Node offset within the group
-    base = 5000 + group_idx * 124
-    n_local = nodenum - base              # 0-based within group
 
-    group_id = f"x{1200 + group_idx}"    # e.g. x1200, x1201, …
-
-    switch_ids = []
-    for rail in range(4):
-        sw_idx = (n_local % switches_per_rail) + rail * switches_per_rail
-        switch_ids.append(f"{group_id}s{sw_idx}")
-    return switch_ids
+def parse_nodelist(path: str) -> list[dict]:
+    """
+    Parse modern SLURM nodelist format.
+    Returns list of dicts: {nodename, nodenum, cabinet, features}
+    
+    Format:
+        NodeName=nid00[5000-5123] Feature=AMD_EPYC_7A53,x1100,eessi Gres=gpu:mi250:8
+        Sockets=8 CoresPerSocket=8 CPUSpecList=0,16,32,48,64,80,96,112
+        NodeName=nid00[5124-5247] Feature=AMD_EPYC_7A53,x1101,eessi ...
+    """
+    nodes = []
+    
+    with open(path) as f:
+        lines = f.readlines()
+    
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        i += 1
+        
+        if not line or line.startswith("#"):
+            continue
+        
+        # Look for NodeName= line
+        if not line.startswith("NodeName="):
+            continue
+        
+        # Parse NodeName and Feature from this line
+        nodename_match = re.search(r'NodeName=(\S+)', line)
+        feature_match = re.search(r'Feature=(\S+)', line)
+        
+        if not nodename_match or not feature_match:
+            continue
+        
+        nodename_pattern = nodename_match.group(1)
+        features = feature_match.group(1)
+        
+        cabinet = extract_cabinet_from_features(features)
+        if not cabinet:
+            continue
+        
+        # Expand node ranges
+        expanded_names = expand_nodename_range(nodename_pattern)
+        
+        for nodename in expanded_names:
+            # Extract numeric portion
+            m = re.match(r'nid0*(\d+)', nodename)
+            if not m:
+                continue
+            
+            nodenum = int(m.group(1))
+            
+            nodes.append({
+                'nodename': nodename,
+                'nodenum': nodenum,
+                'cabinet': cabinet,
+                'features': features,
+            })
+    
+    return sorted(nodes, key=lambda n: n['nodenum'])
 
 
 # ---------------------------------------------------------------------------
-# TOML serialisation helpers (no external deps)
+# LUMI-G switch assignment (corrected topology)
+# ---------------------------------------------------------------------------
+
+def lumi_g_switches(nodenum: int, cabinet: str, cabinet_base_nodenum: int) -> list[str]:
+    """
+    Assign NICs to switches within a LUMI-G dragonfly group (cabinet).
+    
+    Each cabinet (dragonfly group) has 32 64-port Rosetta switches (s0-s31).
+    Each switch uses 16 ports to connect to node NICs.
+    
+    Topology (as documented):
+    - Number nodes within each group from 0 (node0 is first in the group)
+    - NICs 0,1 of nodes {0,2,4,6,8,12,14} share one switch
+    - NICs 2,3 of the same nodes share a different switch
+    - Odd-numbered nodes use different switches than even-numbered nodes
+    - Even and odd nodes never share a switch (always requires hop)
+    
+    Switch assignment pattern:
+    - Even nodes (0,2,4,6,8,12,14): use switches based on NIC pair
+    - Odd nodes (1,3,5,7,9,13,15): use different switches
+    - Pattern repeats across the group
+    
+    Args:
+        nodenum: absolute node number (e.g., 5620)
+        cabinet: cabinet ID (e.g., "x1105")
+        cabinet_base_nodenum: first node number in this cabinet
+    """
+    # Position within cabinet (0-based)
+    node_pos = nodenum - cabinet_base_nodenum
+    
+    if node_pos < 0:
+        # Shouldn't happen with correct input
+        return [f"{cabinet}s0"]
+    
+    is_even = (node_pos % 2) == 0
+    
+    # Within the pattern, even nodes use one set of switches, odd use another
+    # Switches for even-node NICs:
+    #   NICs 0,1: one switch
+    #   NICs 2,3: another switch
+    # Each pair of switches handles multiple even nodes
+    
+    if is_even:
+        # Even node: NICs 0,1 go to one switch, NICs 2,3 to another
+        node_group = node_pos // 2  # which "even-node pair" (0, 1, 2, 3, ...)
+        
+        # Distribute even nodes across switches
+        # ~62 even nodes per group
+        # 32 switches, each takes 2 NICs per node = 16 even nodes per switch
+        # So ~4 switches per group of 16 even nodes
+        
+        switch_base = (node_group // 8) * 2  # which pair of switches
+        
+        # NICs 0,1 on switch 0 of pair, NICs 2,3 on switch 1 of pair
+        return [
+            f"{cabinet}s{switch_base}",      # NICs 0,1
+            f"{cabinet}s{switch_base + 1}",  # NICs 2,3
+        ]
+    else:
+        # Odd node: offset from even nodes
+        node_group = (node_pos - 1) // 2
+        
+        switch_base = 16 + (node_group // 8) * 2  # Use upper half of switches
+        
+        return [
+            f"{cabinet}s{switch_base}",      # NICs 0,1
+            f"{cabinet}s{switch_base + 1}",  # NICs 2,3
+        ]
+
+
+# ---------------------------------------------------------------------------
+# TOML serialisation helpers
 # ---------------------------------------------------------------------------
 
 def toml_str(v: str) -> str:
@@ -113,130 +207,95 @@ def write_section(lines: list[str], header: str, fields: dict):
 # Main conversion
 # ---------------------------------------------------------------------------
 
-def parse_nodelist(path: str):
-    """
-    Parse the nodelist text file.
-    Returns list of dicts: {nodenum, nodeid, features, partitions}
-    Nodes appearing in multiple partitions are merged into one entry.
-    """
-    nodes: dict[int, dict] = {}
-
-    with open(path) as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split()
-            if len(parts) < 3:
-                continue
-            nodeid, features, partition = parts[0], parts[1], parts[2]
-            # Skip header
-            if nodeid.upper() == "NODELIST":
-                continue
-            m = re.match(r"nid0*(\d+)", nodeid)
-            if not m:
-                continue
-            nodenum = int(m.group(1))
-            if nodenum not in nodes:
-                nodes[nodenum] = {
-                    "nodenum":    nodenum,
-                    "nodeid":     nodeid,
-                    "features":   features,
-                    "partitions": [],
-                }
-            if partition not in nodes[nodenum]["partitions"]:
-                nodes[nodenum]["partitions"].append(partition)
-
-    return sorted(nodes.values(), key=lambda n: n["nodenum"])
-
-
 def convert(nodelist_path: str) -> str:
     nodes = parse_nodelist(nodelist_path)
-
-    # Collect all switch ids per group, preserving insertion order
-    switches_by_group: dict[str, list[str]] = defaultdict(list)
-    node_entries: list[dict] = []
-
+    
+    if not nodes:
+        raise ValueError("No nodes parsed from nodelist file")
+    
+    # Find first node number for each cabinet
+    cabinet_base: dict[str, int] = {}
     for node in nodes:
-        nn   = node["nodenum"]
-        kind = classify(nn)
-        if kind == "C":
-            sw_ids   = lumi_c_switch(nn)
-            group_id = f"x{1000 + lumi_c_group(nn)}"
-        elif kind == "G":
-            sw_ids   = lumi_g_switch(nn)
-            group_id = f"x{1200 + lumi_g_group(nn)}"
+        cabinet = node['cabinet']
+        nodenum = node['nodenum']
+        if cabinet not in cabinet_base:
+            cabinet_base[cabinet] = nodenum
         else:
-            # Unknown range – put in a catch-all group
-            sw_ids   = [f"xUNKs0"]
-            group_id = "xUNK"
-
+            cabinet_base[cabinet] = min(cabinet_base[cabinet], nodenum)
+    
+    # Collect all switches per cabinet, preserving insertion order
+    switches_by_cabinet: dict[str, set[str]] = defaultdict(set)
+    node_entries: list[dict] = []
+    
+    for node in nodes:
+        nodename = node['nodename']
+        nodenum = node['nodenum']
+        cabinet = node['cabinet']
+        
+        # Get switches for this node (pass the cabinet base node number)
+        sw_ids = lumi_g_switches(nodenum, cabinet, cabinet_base[cabinet])
+        
+        # Track switches
         for sw in sw_ids:
-            if sw not in switches_by_group[group_id]:
-                switches_by_group[group_id].append(sw)
-
+            switches_by_cabinet[cabinet].add(sw)
+        
         node_entries.append({
-            "nodeid":     node["nodeid"],
-            "switch":     sw_ids,
-            "group":      group_id,
-            "partitions": node["partitions"],
+            'nodename': nodename,
+            'nodenum': nodenum,
+            'cabinet': cabinet,
+            'switches': sw_ids,
         })
-
+    
     # -------------------------------------------------------------------
     # Build output lines
     # -------------------------------------------------------------------
     lines: list[str] = []
-
+    
     lines.append("# LUMI Dragonfly topology -- generated by lumi_to_toml.py")
     lines.append("# Hand-edit freely.")
     lines.append("")
-
+    
     lines.append("[meta]")
     lines.append('system = "lumi"')
     lines.append("w_node_switch   = 1.0")
     lines.append("w_switch_switch = 1.0")
     lines.append("")
-
+    
     lines.append("# -- Switches -------------------------------------------------------")
-    lines.append("# Each switch belongs to one Dragonfly group (= cabinet).")
+    lines.append("# Each cabinet is a Dragonfly group with 32 switches (s0-s31).")
+    lines.append("# Intra-group connections are copper, inter-group are optical.")
     lines.append("")
-
-    for group_id in sorted(switches_by_group):
-        for sw_id in switches_by_group[group_id]:
+    
+    for cabinet in sorted(switches_by_cabinet.keys()):
+        for sw_id in sorted(switches_by_cabinet[cabinet]):
             write_section(lines, "[[switch]]", {
                 "id":    toml_str(sw_id),
-                "group": toml_str(group_id),
+                "group": toml_str(cabinet),
             })
-
+    
     lines.append("# -- Nodes ---------------------------------------------------------")
+    lines.append("# Each node has 4 NICs.")
+    lines.append("# Pairs 0,1 and 2,3 may be on different switches.")
     lines.append("")
-
-    # Group nodes by (partition-tuple, group) for readability
-    # but emit flat [[node]] entries as in the example
-    current_group = None
-    current_parts = None
-
-    # Sort by group then by partitions then by nodenum
-    node_entries.sort(key=lambda e: (e["group"], tuple(sorted(e["partitions"])), e["nodeid"]))
-
+    
+    # Sort by cabinet then by nodenum
+    node_entries.sort(key=lambda e: (e['cabinet'], e['nodenum']))
+    
+    current_cabinet = None
     for entry in node_entries:
-        group_key = entry["group"]
-        parts_key = tuple(sorted(entry["partitions"]))
-
-        if group_key != current_group or parts_key != current_parts:
-            label = f"# group={group_key}  partitions={list(parts_key)}"
-            lines.append(label)
-            current_group = group_key
-            current_parts = parts_key
-
+        cabinet = entry['cabinet']
+        
+        if cabinet != current_cabinet:
+            lines.append(f"# cabinet {cabinet}")
+            current_cabinet = cabinet
+        
         fields = {
-            "id":         toml_str(entry["nodeid"]),
-            "switch":     toml_str_list(entry["switch"]),
-            "group":      toml_str(entry["group"]),
-            "partitions": toml_str_list(entry["partitions"]),
+            "id":       toml_str(entry['nodename']),
+            "switch": toml_str_list(entry['switches']),
+            "group":    toml_str(entry['cabinet']),
         }
         write_section(lines, "[[node]]", fields)
-
+    
     return "\n".join(lines)
 
 
@@ -248,9 +307,13 @@ def main():
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} nodelist.txt [output.toml]", file=sys.stderr)
         sys.exit(1)
-
-    toml_text = convert(sys.argv[1])
-
+    
+    try:
+        toml_text = convert(sys.argv[1])
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    
     if len(sys.argv) >= 3:
         with open(sys.argv[2], "w") as f:
             f.write(toml_text)
