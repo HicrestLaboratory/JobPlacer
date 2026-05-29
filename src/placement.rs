@@ -1,6 +1,7 @@
 // placement.rs
+// Handles multi-parent nodes and proper round-robin depletion
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::info;
 use rand::prelude::*;
@@ -10,6 +11,99 @@ use crate::graph::display::Allocations;
 use crate::ir::topology_ir::TopologyIR;
 use crate::ir::EntityKind;
 use crate::ir::Id;
+
+// ---------------------------------------------------------------------------
+// Topology Normalization: Handle multi-parent nodes
+// ---------------------------------------------------------------------------
+
+/// Normalize topology when nodes have multiple parents (switches).
+/// Creates synthetic L1 switches that collapse the multiple parents into one.
+fn normalize_multiparent_topology(ir: &TopologyIR) -> TopologyIR {
+    // Build reverse mapping: node -> list of parents
+    let mut node_to_parents: HashMap<Id, Vec<Id>> = HashMap::new();
+    
+    for (parent, children) in &ir.contains {
+        for child in children {
+            node_to_parents
+                .entry(child.clone())
+                .or_insert_with(Vec::new)
+                .push(parent.clone());
+        }
+    }
+
+    // Find nodes with multiple parents and group by their parent set
+    let mut parent_sets: HashMap<Vec<Id>, Vec<Id>> = HashMap::new();
+    
+    for (node, parents) in node_to_parents.iter() {
+        if parents.len() > 1 {
+            // Normalize parent set (sort for consistent grouping)
+            let mut sorted_parents = parents.clone();
+            sorted_parents.sort_by(|a, b| a.0.cmp(&b.0));
+            
+            parent_sets
+                .entry(sorted_parents)
+                .or_insert_with(Vec::new)
+                .push(node.clone());
+        }
+    }
+
+    // If no multi-parent nodes, return unchanged
+    if parent_sets.is_empty() {
+        return ir.clone();
+    }
+
+    // Create synthetic switches and update IR
+    let mut new_entities = ir.entities.clone();
+    let mut new_contains = ir.contains.clone();
+
+    for (parent_set, nodes_in_group) in parent_sets {
+        // Create synthetic switch ID: use first parent's name as basis
+        let synthetic_id = if let Some(_first_parent) = parent_set.first() {
+            // Create a deterministic synthetic name from the parent IDs
+            let parent_hash = parent_set
+                .iter()
+                .map(|p| p.0.as_str())
+                .collect::<Vec<_>>()
+                .join("_");
+            Id(format!("__synthetic_l1_{}", parent_hash))
+        } else {
+            continue;
+        };
+
+        // Copy an entity from the first parent switch, preserving metadata
+        if let Some(first_parent) = parent_set.first() {
+            if let Some(parent_entity) = ir.entities.get(first_parent) {
+                let mut synthetic_entity = parent_entity.clone();
+                synthetic_entity.id = synthetic_id.clone();
+                synthetic_entity.meta.insert("__synthetic".to_string(), "true".to_string());
+                new_entities.insert(synthetic_id.clone(), synthetic_entity);
+            }
+        }
+
+        // Remove multi-parent nodes from all their original parents
+        for parent in &parent_set {
+            if let Some(children) = new_contains.get_mut(parent) {
+                children.retain(|child| !nodes_in_group.contains(child));
+            }
+        }
+
+        // Add all multi-parent nodes to the synthetic switch
+        new_contains
+            .entry(synthetic_id)
+            .or_insert_with(Vec::new)
+            .extend(nodes_in_group);
+    }
+
+    // Clean up empty parent entries
+    new_contains.retain(|_, children| !children.is_empty());
+
+    // Reconstruct TopologyIR with normalized containment
+    let mut normalized = ir.clone();
+    normalized.entities = new_entities;
+    normalized.contains = new_contains;
+
+    normalized
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -234,17 +328,20 @@ impl TopoView {
 // Placement engine
 // ---------------------------------------------------------------------------
 
-pub struct Placer<'a> {
-    ir: &'a TopologyIR,
+pub struct Placer {
+    ir: TopologyIR,  // Now owns the (possibly normalized) IR
     view: TopoView,
     rng: SmallRng,
 }
 
-impl<'a> Placer<'a> {
-    pub fn new(ir: &'a TopologyIR, seed: u64) -> Self {
+impl Placer {
+    pub fn new(ir: &TopologyIR, seed: u64) -> Self {
+        // Normalize the topology if nodes have multiple parents
+        let normalized_ir = normalize_multiparent_topology(ir);
+        
         Self {
-            ir,
-            view: TopoView::build(ir),
+            view: TopoView::build(&normalized_ir),
+            ir: normalized_ir,
             rng: SmallRng::seed_from_u64(seed),
         }
     }
@@ -278,6 +375,7 @@ impl<'a> Placer<'a> {
                 .cmp(&constraint_rank(&b.1.placement_class))
                 .then_with(|| b.1.nodes.cmp(&a.1.nodes))
         });
+        // println!("{:#?}", job_order);
 
         let mut used: HashSet<Id> = HashSet::new();
         let mut placements: BTreeMap<String, JobPlacement> = BTreeMap::new();
@@ -587,22 +685,35 @@ impl<'a> Placer<'a> {
         }
 
         // Round-robin across cells to ensure we span ≥2
+        // FIX: Properly remove exhausted pools
         let mut result: Vec<Id> = Vec::with_capacity(n);
         let mut ci = 0usize;
+        
         while result.len() < n {
-            let cell_len = per_cell.len();
-            let (_, pool) = &mut per_cell[ci % cell_len];
+            if per_cell.is_empty() {
+                break; // All pools exhausted
+            }
+            
+            let per_cell_len = per_cell.len();
+            let (_, pool) = &mut per_cell[ci % per_cell_len];
             pool.shuffle(&mut self.rng);
+            
             if let Some(id) = pool.pop() {
                 result.push(id);
+            } else {
+                // Remove this exhausted pool
+                let per_cell_len_ = per_cell.len();
+                per_cell.remove(ci % per_cell_len_);
+                if ci > 0 {
+                    ci = ci.saturating_sub(1);
+                }
+                continue;
             }
-            ci += 1;
-            if ci > per_cell.len() * n {
-                break;
-            } // safety valve
+            
+            ci = ci.saturating_add(1);
         }
 
-        if result.len() == n && spans_multiple_cells(&result, self.ir) {
+        if result.len() == n && spans_multiple_cells(&result, &self.ir) {
             Some(result)
         } else {
             None
@@ -847,7 +958,7 @@ impl<'a> Placer<'a> {
             }
         }
 
-        if result.len() == total && spans_multiple_cells(&result, self.ir) {
+        if result.len() == total && spans_multiple_cells(&result, &self.ir) {
             Some(result)
         } else {
             None
@@ -880,23 +991,36 @@ impl<'a> Placer<'a> {
         l1_pools.shuffle(&mut self.rng);
 
         // Round-robin across L1 pools to ensure ≥2 are represented
+        // FIX: Properly remove exhausted pools
         let mut result: Vec<Id> = Vec::with_capacity(n);
         let mut pi = 0usize;
+        
         while result.len() < n {
-            let l1_pools_len = l1_pools.len();
-            let pool = &mut l1_pools[pi % l1_pools_len];
+            if l1_pools.is_empty() {
+                break; // All pools exhausted
+            }
+            
+            let pools_len = l1_pools.len();
+            let pool = &mut l1_pools[pi % pools_len];
             pool.shuffle(&mut self.rng);
+            
             if let Some(id) = pool.pop() {
                 result.push(id);
+            } else {
+                // Remove this exhausted pool
+                let pools_len_ = l1_pools.len();
+                l1_pools.remove(pi % pools_len_);
+                if pi > 0 {
+                    pi = pi.saturating_sub(1);
+                }
+                continue;
             }
-            pi += 1;
-            if pi > l1_pools.len() * n {
-                break;
-            }
+            
+            pi = pi.saturating_add(1);
         }
 
         // Verify we actually span ≥2 L1 domains
-        let distinct_l1s = count_distinct_l1s(&result, cell, self.ir);
+        let distinct_l1s = count_distinct_l1s(&result, cell, &self.ir);
         if result.len() == n && distinct_l1s >= 2 {
             Some(result)
         } else {
