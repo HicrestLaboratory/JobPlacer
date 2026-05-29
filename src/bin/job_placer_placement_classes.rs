@@ -13,7 +13,7 @@ use std::{
     io::{self, Read},
 };
 
-use job_placer::placement::{JobRequest, PlacementResult, Placer};
+use job_placer::placement::{JobRequest, PlacementResult, PlacementStrategy, Placer};
 
 pub fn placement_to_allocations(result: &PlacementResult) -> Option<Allocations> {
     match result {
@@ -70,52 +70,111 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // -----------------------------------------------------------------------
     // Run placer
+    //
+    // Retry schedule (Auto mode):
+    //
+    //   Tier 1 — Strict:      honour every constraint exactly.
+    //   Tier 2 — Relaxed:     IntraGroup may spill cross-cell.
+    //   Tier 3 — BestEffort:  additionally drops block-alignment when needed.
+    //
+    // Each tier uses its own seed range so seed variance and constraint
+    // relaxation are orthogonal.  A fixed --strategy skips straight to that
+    // tier for all attempts.
     // -----------------------------------------------------------------------
-    let mut seed = cli.seed.unwrap_or(42);
-    const ATTEMPTS: usize = 20;
 
+    // (strategy, seed_offset) pairs — built once, iterated in order.
+    // Each tier gets ATTEMPTS_PER_TIER seed variants before escalating.
+    const ATTEMPTS_PER_TIER: usize = 7;
+
+    #[rustfmt::skip]
+    let schedule: &[(PlacementStrategy, u64)] = &[
+        (PlacementStrategy::Strict,      0),
+        (PlacementStrategy::Relaxed,     ATTEMPTS_PER_TIER as u64),
+        (PlacementStrategy::BestEffort,  ATTEMPTS_PER_TIER as u64 * 2),
+    ];
+
+    let base_seed = cli.seed.unwrap_or(42);
+    let total_attempts = schedule.len() * ATTEMPTS_PER_TIER;
+
+    let mut placer = Placer::new(&ir, base_seed);
     let mut last_result: Option<PlacementResult> = None;
-    let mut placer = Placer::new(&ir, seed);
+    let mut global_attempt = 0usize;
 
-    for attempt in 0..ATTEMPTS {
-        info!("Attempt #{}, using seed: {seed}", attempt + 1);
-        let result = placer.place(&jobs);
+    for &(strategy, seed_offset) in schedule {
+        info!("── Strategy tier: {strategy:?} ({ATTEMPTS_PER_TIER} attempt(s))");
 
-        match result {
-            PlacementResult::Ok { .. } => {
-                println!("{}", serde_json::to_string_pretty(&result)?);
+        for i in 0..ATTEMPTS_PER_TIER {
+            global_attempt += 1;
+            let seed = base_seed.wrapping_add(seed_offset + i as u64);
+            placer.change_seed(seed);
 
-                if cli.visualize || cli.out_svg.is_some() {
-                    if let Some(allocations) = placement_to_allocations(&result) {
-                        display_graph(
-                            &filter_ir_by_allocations(&ir, &allocations),
-                            if let Some(f) = cli.out_svg {
-                                f
-                            } else {
-                                String::from("topology_placement.svg")
-                            }
-                            .as_str(),
-                            Some(&allocations),
-                            &DisplayOptions::default(),
+            info!(
+                "Attempt #{global_attempt}/{total_attempts} [strategy={strategy:?}, seed={seed}]"
+            );
+
+            let result = placer.place_with_strategy(&jobs, strategy);
+
+            match result {
+                PlacementResult::Ok { ref placements } => {
+                    // Warn on stderr for any job whose constraint was relaxed,
+                    // while keeping stdout clean for downstream consumers.
+                    let relaxed: Vec<_> = placements
+                        .iter()
+                        .filter(|(_, p)| p.placement_class != p.achieved_class)
+                        .collect();
+
+                    if !relaxed.is_empty() {
+                        eprintln!(
+                            "WARNING: {n} job(s) placed with relaxed constraints \
+                             [strategy={strategy:?}, seed={seed}]:",
+                            n = relaxed.len()
                         );
+                        for (name, p) in &relaxed {
+                            eprintln!(
+                                "  {name}: requested={req}  achieved={ach}",
+                                req = p.placement_class,
+                                ach = p.achieved_class,
+                            );
+                        }
                     }
+
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+
+                    if cli.visualize || cli.out_svg.is_some() {
+                        if let Some(allocations) = placement_to_allocations(&result) {
+                            display_graph(
+                                &filter_ir_by_allocations(&ir, &allocations),
+                                if let Some(ref f) = cli.out_svg {
+                                    f.as_str()
+                                } else {
+                                    "topology_placement.svg"
+                                },
+                                Some(&allocations),
+                                &DisplayOptions::default(),
+                            );
+                        }
+                    }
+
+                    std::process::exit(0);
                 }
 
-                std::process::exit(0);
-            }
-            PlacementResult::Infeasible { ref reason } => {
-                info!("Attempt #{} failed: {reason}", attempt + 1);
-                last_result = Some(result);
-                // Each retry uses a different seed so the random shuffle
-                // explores a different region of the placement space.
-                seed = seed.wrapping_add(1);
-                placer.change_seed(seed);
+                PlacementResult::Infeasible { ref reason } => {
+                    info!(
+                        "Attempt #{global_attempt} failed [strategy={strategy:?}, seed={seed}]: \
+                         {reason}"
+                    );
+                    last_result = Some(result);
+                }
             }
         }
     }
 
-    // All attempts exhausted — print the last failure and exit with an error.
+    // All attempts exhausted — report the last failure and exit non-zero.
     let failed = last_result.unwrap();
+    eprintln!(
+        "ERROR: placement failed after {total_attempts} attempt(s) \
+         (final tier: BestEffort)"
+    );
     println!("{}", serde_json::to_string_pretty(&failed)?);
     std::process::exit(1);
 }

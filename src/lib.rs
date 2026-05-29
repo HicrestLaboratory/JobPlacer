@@ -27,6 +27,23 @@ use crate::{
 
 const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter", "alps", "lumi"];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum StrategyArg {
+    /// Honour every constraint exactly; fail if infeasible.
+    Strict,
+    /// IntraGroup may spill across cells; other constraints stay exact.
+    Relaxed,
+    /// Additionally relaxes block-alignment and L1 locality when needed.
+    #[value(name = "best-effort")]
+    BestEffort,
+    /// Try Strict first, then Relaxed, then BestEffort (default).
+    Auto,
+}
+ 
+impl Default for StrategyArg {
+    fn default() -> Self { StrategyArg::Auto }
+}
+
 // ---------------------------------------------------------------------------
 // CLI definition
 // ---------------------------------------------------------------------------
@@ -94,6 +111,12 @@ pub struct Cli {
     /// Wait for query or input (behavior main-dependent)
     #[arg(short = 'w', long)]
     pub wait_stdin: bool,
+
+    #[arg(long, default_value = "auto")]
+    pub strategy: StrategyArg,
+
+    #[arg(long, default_value_t = 20)]
+    pub attempts: usize,
 }
 
 // ---------------------------------------------------------------------------
