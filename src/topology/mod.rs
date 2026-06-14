@@ -13,7 +13,7 @@ use crate::parsers::sinfo::{self, index_by_hostname, NodeInfo, NodeState};
 use crate::parsers::slurm::NodeListParseError;
 use crate::parsers::topology_from_file_raw;
 
-pub mod alps;
+pub mod alps_daint;
 pub mod jupiter;
 pub mod leonardo;
 

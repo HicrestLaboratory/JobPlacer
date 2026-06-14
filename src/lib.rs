@@ -18,14 +18,14 @@ use crate::{
         toml::{self, TomlTopologyOptions},
     },
     topology::{
-        alps::get_groups_from_topo,
+        alps_daint::get_groups_from_topo,
         jupiter::{self, JupiterOptions},
         leonardo::{self as leo, LeonardoOptions},
         NodeFilterOptions, SinfoSource, TopoSource,
     },
 };
 
-const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter", "alps", "lumi"];
+const SUPPORTED_SYSTEMS: &[&str] = &["leonardo", "jupiter", "alps_daint", "alps_clariden", "lumi"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum StrategyArg {
@@ -73,7 +73,7 @@ pub struct Cli {
 
     /// System name
     /// Currently supported: leonardo, jupiter, alps FIXME use SUPPORTED_SYSTEMS
-    #[arg(short = 's', long, value_name = "SYSTEM", value_parser = ["leonardo", "jupiter", "alps", "lumi"])]
+    #[arg(short = 's', long, value_name = "SYSTEM", value_parser = ["leonardo", "jupiter", "alps_daint", "alps_clariden", "lumi"])]
     pub system: String,
 
     /// System-specific topology source.
@@ -174,10 +174,10 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
     let topo_source = resolve_topo_source(&cli.topo_source);
 
     // Handle ALPS separately — it only supports TOML files.
-    let mut ir = if cli.system == "alps" {
+    let mut ir = if cli.system.starts_with("alps") {
         match &topo_source {
             TopoSource::Command => {
-                eprintln!("error: System ALPS requires a TOML file (you can find it in systems/).");
+                eprintln!("error: System ALPS (daint or clariden) requires a TOML file (you can find it in systems/).");
                 std::process::exit(1);
             }
             TopoSource::Files(_f, t) => {
@@ -190,7 +190,7 @@ pub fn load_topology(cli: &Cli) -> Result<TopologyIR, Box<dyn std::error::Error>
                         TomlTopologyOptions::default(),
                     )?;
                     match system.to_lowercase().as_str() {
-                        "alps" => get_groups_from_topo(ir, topo_source)?,
+                        "alps_daint" => get_groups_from_topo(ir, topo_source)?,
                         _ => ir,
                     }
                 } else {

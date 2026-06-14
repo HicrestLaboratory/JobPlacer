@@ -3,7 +3,7 @@
 # with synthesised intra-/inter-group links.
 
 [meta]
-system = "alps"
+system = "alps_daint"
 w_node_switch   = 1.0
 w_switch_switch = 1.0
 
