@@ -1,6 +1,10 @@
 # JobPlacer
 
-A Rust tool for topology-aware node selection on HPC systems (SLURM).
+JobPlacer is a CLI tool for topology-aware node selection on HPC systems. It has built-in support for the topologies of Leonardo, JUPITER, LUMI, and Alps (Daint and Clariden), modeling the hierarchy of compute nodes, switches, and Dragonfly(+) groups.  
+
+The tool is easily extensible to new systems by providing a topology map in TOML format. It can query, analyze and visualize how the nodes assigned to a job are distributed across the system topology, making it useful both for forcing node placement before job submission and for analyzing allocations after execution.  
+
+JobPlacer supports a variety of placement strategies, including intra-L1, intra-group, inter-group, and other topology-aware placement policies.
 
 ## Installation
 
