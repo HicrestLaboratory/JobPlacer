@@ -21,3 +21,7 @@ Cargo.lock
 !example/placements/*.json
 
 *__pycache__/
+
+# Example topo and sinfo files
+!leonardo_topo.txt
+!leonardo_sinfo.txt
