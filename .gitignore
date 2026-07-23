@@ -25,3 +25,5 @@ Cargo.lock
 # Example topo and sinfo files
 !leonardo_topo.txt
 !leonardo_sinfo.txt
+!jupiter_topo.txt
+!jupiter_sinfo.txt
